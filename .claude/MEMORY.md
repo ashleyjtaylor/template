@@ -1,0 +1,1 @@
+- [Project overview](memory/project_overview.md) — bootstrappable monorepo template for shipping new SaaS products: stack, architecture, and load-bearing design decisions

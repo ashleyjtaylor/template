@@ -1,0 +1,73 @@
+---
+name: code-style
+description: Apply consistent code style and engineering standards to a file or module. Covers comments, error handling, types, naming, and what not to add. Use when reviewing or writing code.
+---
+
+Apply these rules to the code in scope. Fix violations. Do not change behaviour.
+
+**Formatting is automatic.** Biome is the source of truth (single quotes, no trailing commas, semicolons as-needed). Don't argue with it; don't override per-file. Run `pnpm format` if a file looks off.
+
+**Comments**
+
+Write no comments by default. Add one only when the WHY is non-obvious: a hidden constraint, a workaround for a specific bug, a subtle invariant. If removing the comment would not confuse a future reader, delete it.
+
+Never write:
+- Comments that restate what the code does (`// create user`)
+- Reference comments that describe the caller or task (`// used by signup flow`, `// added for issue #42`)
+- Multi-line docstrings or block comments on internal functions
+
+**Types**
+
+Use string union types, not enums or const objects with runtime values:
+```ts
+// correct
+export type Status = 'pending' | 'active' | 'cancelled'
+
+// wrong — runtime value gets stripped by bundlers when a name has both export const and export type
+export const Status = { PENDING: 'pending' } as const
+```
+
+Shared domain types live in `packages/types`. Validation schemas (Zod) live in `packages/schemas`. Don't duplicate either across apps.
+
+Type-only imports use `import type` (required by `verbatimModuleSyntax` in `tsconfig.base.json`):
+```ts
+import type { User } from '@template/types'
+import { signAccessToken } from '@template/auth'
+```
+
+Prefer `unknown` over `any`. If you reach for `any`, narrow it at the boundary instead.
+
+Avoid `as` type assertions except at validated boundaries (after a Zod parse, after `instanceof`). Inline assertions hide bugs.
+
+**Error handling**
+
+Use typed error classes from `packages/errors`, not plain `Error` or generic HTTP exceptions:
+```ts
+throw new ConflictError('Email already in use')
+throw new UnauthorizedError('Invalid credentials')
+throw new NotFoundError('Job not found')
+```
+
+Only validate and handle errors at system boundaries (user input, external APIs). Trust internal function contracts — do not add defensive checks for things that cannot happen.
+
+**Naming**
+
+- Functions: verb phrases that describe what they do (`createUser`, `signAccessToken`)
+- Booleans: `is`, `has`, `can` prefix (`isVerified`, `hasExpired`)
+- No abbreviations unless universally understood (`db`, `id`, `url` are fine; `mgr`, `svc`, `hlpr` are not)
+
+**Authz**
+
+No inline role checks. Every authorisation decision goes through `assertCan(membership, 'resource:verb')` from `packages/auth`. Action strings follow `resource:verb` convention (e.g. `'members:invite'`, `'org:manage'`).
+
+**What not to add**
+
+- No feature flags or backwards-compatibility shims unless explicitly asked
+- No error handling for scenarios that cannot happen in the current code path
+- No helper abstractions for fewer than three call sites
+- No logging of every operation — log failures and non-obvious decisions only via the shared `pino` logger
+- No `console.log` — Biome warns on it
+
+**After applying changes**
+
+Run `pnpm lint && pnpm typecheck`. Fix all errors before reporting done.
