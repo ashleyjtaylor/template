@@ -24,6 +24,26 @@ description: When building and on completion of a feature, ensure it follows and
 - Add or update a runbook in `docs/runbooks/` if the feature introduces ops procedures (restore, rotation, backfill).
 - Don't write README/docs for trivial features.
 
+**Review (before committing — be your own code reviewer)**
+
+Read the diff back end-to-end and audit for things that look fine in isolation but jar against the rest of the codebase. Don't trust "it works on my machine" — many issues only surface in CI, on a fork, or in production.
+
+Specifically check:
+
+- **Overlooked logic**: edge cases, error paths, race conditions, empty/null/undefined inputs, what happens on retry.
+- **Cross-file consistency**: values that travel together (region, ports, version pins, env var names, role ARNs) — if you changed one, did you change the others? `grep` for the value across the repo.
+- **CI actually validates the change**: if you added a new package, does CI lint/typecheck/test it? If you added a new workflow, does it run against the right targets and have the required secrets/permissions? If you broke a config, would CI catch it before deploy?
+- **Version compatibility**: when adding multiple deps, verify they're compatible with each other (not just "latest of each independently"). Especially relevant for tightly-coupled families: aws-cdk + aws-cdk-lib, prisma + @prisma/client, react + @types/react, etc. Group them in Renovate so they update together.
+- **Hardcoded values that should be centralised**: a value duplicated in 2+ places will eventually drift. Either centralise it or add a comment in each place pointing at the others.
+- **Failure modes**: how does this fail if the network is slow / the secret is missing / the dependency is down / the user passes garbage / two requests arrive simultaneously? Are the error messages useful?
+- **Reverse-direction effects**: did a renamed/removed export break consumers? Did a new required arg break callers?
+- **Footguns introduced**: silent failures, confusing error messages, defaults that work locally but explode in prod.
+- **Skill / overview drift**: if this changed how something works, is the relevant skill or `.claude/memory/project_overview.md` still accurate?
+
+Ask: "If a thorough reviewer poked at this PR for 5 minutes, what would they find?" Find it yourself first.
+
+If anything turns up, fix it before committing — don't commit knowing the next commit will be a follow-up fix.
+
 **Commit**
 - Use the `/commit` skill. Conventional Commits is enforced via commitlint — non-conforming messages are rejected at commit time.
 
