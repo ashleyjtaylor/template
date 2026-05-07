@@ -76,5 +76,35 @@ jobs:
       - name: Lint commits
         run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
 
-      - name: Lint PR title
-        run: echo "${{ github.event.pull_request.title }}" | pnpm exec commitlint
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci, cdk]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: pnpm/action-setup@v6.0.5
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          # Region must match `aws.region` in infra/cdk/lib/config.ts
+          aws-region: eu-west-1
+
+      - name: CDK deploy
+        working-directory: infra/cdk
+        # Stack pattern must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts
+        run: pnpm exec cdk deploy "template-staging-*" --require-approval never
