@@ -6,6 +6,10 @@
     {
       "matchUpdateTypes": ["major"],
       "schedule": ["before 4am on the first day of the month"]
+    },
+    {
+      "groupName": "aws-cdk",
+      "matchPackageNames": ["aws-cdk", "aws-cdk-lib", "constructs"]
     }
   ],
   "lockFileMaintenance": {
