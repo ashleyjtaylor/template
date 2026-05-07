@@ -26,11 +26,5 @@
     "lefthook": "2.1.6",
     "turbo": "2.9.10",
     "typescript": "6.0.3"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lefthook"
-    ]
   }
 }

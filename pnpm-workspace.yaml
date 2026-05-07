@@ -2,3 +2,7 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'infra/*'
+
+onlyBuiltDependencies:
+  - esbuild
+  - lefthook
