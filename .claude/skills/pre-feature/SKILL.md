@@ -50,3 +50,5 @@ Before writing a single line of code, interview me about this feature. Work thro
 - How will the Dockerfile need to work?
 
 Once we've answered everything, summarise the full plan — data model, routes, types, infrastructure, error codes, and test cases — before I start implementing.
+
+**After the user signs off on the plan**, save the exact plan summary to `docs/tickets/NN-<kebab-slug>.md` where `NN` is the next zero-padded sequential number (look at existing files in `docs/tickets/` to find the next one) and the slug is a short feature name (e.g. `03-database-setup.md`). The file is the durable record of what was agreed before code was written; future sessions can read it to understand intent independent of what eventually shipped. Commit it on the same branch as the implementation, or as its own small docs PR — either's fine, but it has to land.
