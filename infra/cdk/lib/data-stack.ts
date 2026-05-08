@@ -41,7 +41,12 @@ type DbSecrets = {
   DB_NAME: EcsSecret
 }
 
-const DB_NAME = 'template'
+// `template` (bare) is a reserved DB name on RDS Postgres because the engine
+// uses `template0` / `template1` as system templates. Use `app` instead.
+// Local Compose / CI use `template_dev` / `template_test` — Postgres only
+// reserves the exact words `template0` and `template1`, so the underscored
+// names are fine there.
+const DB_NAME = 'app'
 const DB_USER = 'template_admin'
 
 export class DataStack extends Stack {
