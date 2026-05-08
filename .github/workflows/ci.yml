@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Staging deploy is manual: trigger from the Actions tab when you want to
+  # spin staging back up. Push to main no longer auto-deploys, so doc/code
+  # merges don't unintentionally restart torn-down infra.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -98,7 +102,7 @@ jobs:
             .
 
   deploy-infra:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [ci, cdk]
     runs-on: ubuntu-latest
     environment: staging
@@ -131,7 +135,7 @@ jobs:
         run: pnpm exec cdk deploy template-staging-network template-staging-data --require-approval never
 
   build-image:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [deploy-infra]
     runs-on: ubuntu-latest
     environment: staging
@@ -170,7 +174,7 @@ jobs:
           docker push ${{ steps.tag.outputs.image-uri }}
 
   deploy-app:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [build-image]
     runs-on: ubuntu-latest
     environment: staging
@@ -205,7 +209,7 @@ jobs:
             -c imageTag=${{ needs.build-image.outputs.image-tag }}
 
   smoke:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [deploy-app]
     runs-on: ubuntu-latest
     environment: staging
