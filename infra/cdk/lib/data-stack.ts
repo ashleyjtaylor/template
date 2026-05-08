@@ -158,13 +158,12 @@ export class DataStack extends Stack {
       // Override the API image's CMD: this task only applies migrations, then
       // exits. CI's `aws ecs run-task` invocation doesn't override; this is
       // the canonical command.
-      command: [
-        'node',
-        'node_modules/.bin/prisma',
-        'migrate',
-        'deploy',
-        '--schema=./prisma/schema.prisma'
-      ]
+      //
+      // Don't prefix with `node` — `.bin/prisma` is a /bin/sh wrapper, not
+      // JS, so `node node_modules/.bin/prisma` errors with "SyntaxError:
+      // missing ) after argument list" on the wrapper's shell syntax. The
+      // wrapper's shebang invokes node on the real JS entry on its own.
+      command: ['node_modules/.bin/prisma', 'migrate', 'deploy', '--schema=./prisma/schema.prisma']
     })
 
     // CFN outputs consumed by the migrate-db CI step.
