@@ -6,7 +6,12 @@ import { NetworkStack } from '../lib/network-stack.js'
 
 const app = new App()
 
-const imageTag = app.node.tryGetContext('imageTag') ?? 'placeholder'
+// Use `||` not `??` — an empty-string `imageTag` (e.g. from a workflow that
+// failed to substitute it) must be treated as missing. Without this, the
+// empty tag becomes a tagless image reference in the CFN template, which
+// Docker resolves to `:latest` — pulls fail because we never push `:latest`.
+// `:placeholder` fails just as loudly but with a clearer error message.
+const imageTag = app.node.tryGetContext('imageTag') || 'placeholder'
 
 const envs: EnvName[] = ['staging', 'production']
 
