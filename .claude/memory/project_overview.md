@@ -62,6 +62,8 @@ scripts/
 
 Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome** (lint/format) + **TypeScript**.
 
+**Package extraction rule.** Each `packages/*` is created when it has its **second** consumer, not pre-created. Until then, the same code lives inline in the single consuming app (e.g. error classes start in `apps/api/src/lib/errors.ts` and move to `packages/errors/` when the worker arrives). The list above describes the *eventual* shape; at any given commit, some packages may not yet exist — `git status` is the truth.
+
 ---
 
 ## Apps
@@ -123,7 +125,7 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 ## Data layer
 
-### Prisma + Postgres 16
+### Prisma + Postgres
 
 - **Single source of truth** in `apps/api/prisma/schema.prisma`. The `db` package re-exports the typed client.
 - **Migrations**: `prisma migrate deploy` runs as an **ECS one-off task** before every API rolling deploy. Never at container startup (causes boot storms when ECS scales out).
@@ -137,8 +139,8 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 ### Identifiers
 
-- **Stripe-style prefixed IDs** generated via `packages/ids`: `user_…`, `org_…`, `membership_…`, `subscription_…` (ours, not Stripe's), `upload_…`, `audit_…`, `comp_grant_…`.
-- Underlying generator: cuid2. Collision-resistant, URL-safe, no insertion-order leak.
+- **Stripe-style prefixed IDs** for every system-generated identifier — entities (`user_…`, `org_…`, `membership_…`, `subscription_…` (ours, not Stripe's), `upload_…`, `audit_…`, `comp_grant_…`) and ephemeral identifiers (`req_…` for HTTP request IDs). Any new identifier follows the same `prefix_<id>` shape.
+- Underlying generators: cuid2 for entities (collision-resistant, URL-safe, no insertion-order leak); `crypto.randomUUID()` for request IDs (built into Node, no dep). When `packages/ids` lands, it owns both.
 - External Stripe IDs stored in dedicated `stripe_id` columns, never used as primary keys.
 
 ### Dates + money
@@ -422,11 +424,26 @@ Subsequent deploys: push image → CI orchestrates ECS rolling update; CDK only 
 
 ## CI/CD
 
-### Workflows (GitHub Actions)
+### Workflow shape
 
-- **`ci.yml`** — every PR + push to `main`: install → lint (Biome) → typecheck (turbo) → test (unit + integration with Postgres service container) → build (including Docker image for `apps/api`). Required checks gate PR merges.
-- **`deploy-staging.yml`** — push to `main`: build & push image tagged `${git-sha}` → migrate staging DB (ECS one-off task) → deploy frontends to S3 → rolling-deploy ECS services → smoke test → run Playwright E2E. On green, re-tag image as `staging-passed-${git-sha}`.
-- **`deploy-production.yml`** — git tag `v*.*.*` or manual `workflow_dispatch`: verify the sha has a `staging-passed` image → require approval (GitHub Environments protection rule) → re-tag image as `v${tag}` → migrate prod DB → rolling-deploy → smoke test.
+A single `ci.yml` houses every job, gated by `github.event_name` and `github.ref`. We chose this over separate workflow files because conditional jobs scale fine at our size, share concurrency / setup blocks, and keep the deploy DAG visible in one place. Split into multiple workflow files only if branch protection or environment rules force it.
+
+Job layout:
+
+- **Validation** (every PR + push to `main`):
+  - `ci` — install → Biome → typecheck → test (unit + integration with Postgres service container).
+  - `cdk` — `cdk synth` against all stacks.
+  - `commitlint` (PR-only).
+  - `docker-build` (PR-only) — exercises `apps/api/Dockerfile` so breakage doesn't reach `main`.
+- **Staging deploy chain** (push to `main`, gated on validation green):
+  - `deploy-infra` — `cdk deploy` network + data stacks.
+  - `build-image` — `docker build` + push image tagged `${git-sha}` to ECR.
+  - `migrate-db` — ECS one-off task running `prisma migrate deploy`.
+  - `deploy-app` — `cdk deploy` app stack with `imageTag` context (rolling ECS update).
+  - `smoke` — poll ALB DNS for `/health`, assert `version` matches the SHA.
+  - On green, re-tag the image as `staging-passed-${git-sha}` for promotion.
+- **Production deploy chain** (git tag `v*.*.*` or `workflow_dispatch`, environment-protected):
+  - Verify the SHA has a `staging-passed` image → require approval (GitHub Environments rule) → re-tag image as `v${tag}` → `migrate-db` → `deploy-app` → `smoke`. **No rebuild** — the same image binary that passed staging runs in production (promote-by-image).
 
 ### Promote-by-image (critical)
 
@@ -503,6 +520,13 @@ The same Docker image binary that ran in staging E2E is what runs in production.
   - Stripe webhook backlog > 1min
   - Comp grant expiring tomorrow (informational)
 
+### Health endpoints
+
+Two routes, different consumers:
+
+- **`GET /health`** — liveness. Returns `200 { status, version, uptime }` whenever the process is up; that's all it checks. Used by the **ALB target health check** (no DB dependency, so a slow query never blackholes traffic). Hit by ALB every 30s; excluded from the request logger to keep CloudWatch signal clean.
+- **`GET /health/ready`** — readiness. Probes every required dependency (DB now; Redis, queue, etc. as they land). Returns `200` when all dependencies are reachable, `503` otherwise. Used by **internal tooling and monitoring**, not by ALB. Failures here do **not** pull tasks out of rotation — that's deliberate, a temporary RDS hiccup shouldn't take the whole service down.
+
 ### Not included by default
 
 - OpenTelemetry / X-Ray distributed tracing (Sentry perf covers 80%).
@@ -520,8 +544,8 @@ The same Docker image binary that ran in staging E2E is what runs in production.
 
 ### Docker Compose (repo root)
 
-- Postgres 16 (`:5432`)
-- Redis 7 (`:6379`)
+- Postgres (`:5432`)
+- Redis (`:6379`)
 - MinIO (`:9000`, console `:9001`) — local S3
 - Mailhog (`:1025` SMTP, `:8025` web UI) — local email catcher
 
