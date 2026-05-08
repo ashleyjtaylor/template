@@ -31,9 +31,17 @@ const schema = z
     DB_PASSWORD: z.string().default('postgres'),
     DB_NAME: z.string().default('template_dev')
   })
-  .transform((parsed) => ({
-    ...parsed,
-    DATABASE_URL: `postgresql://${parsed.DB_USER}:${encodeURIComponent(parsed.DB_PASSWORD)}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`
-  }))
+  .transform((parsed) => {
+    // RDS Postgres has `rds.force_ssl=1`; the connection is rejected without
+    // TLS. Local Postgres (Compose, CI service container) doesn't speak SSL
+    // — gate on the host name so we only opt in for RDS endpoints.
+    const isRds = parsed.DB_HOST.endsWith('rds.amazonaws.com')
+    const sslSuffix = isRds ? '?sslmode=require' : ''
+
+    return {
+      ...parsed,
+      DATABASE_URL: `postgresql://${parsed.DB_USER}:${encodeURIComponent(parsed.DB_PASSWORD)}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}${sslSuffix}`
+    }
+  })
 
 export const env = schema.parse(process.env)
