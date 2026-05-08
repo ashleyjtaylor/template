@@ -61,6 +61,10 @@ export class AppStack extends Stack {
         NODE_ENV: 'production',
         PORT: String(APP_PORT)
       },
+      // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
+      // in apps/api/src/env.ts so the app can drain in-flight requests
+      // before ECS force-kills the container.
+      stopTimeout: Duration.seconds(30),
       healthCheck: {
         command: [
           'CMD-SHELL',
