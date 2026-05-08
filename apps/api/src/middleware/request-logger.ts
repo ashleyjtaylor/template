@@ -9,8 +9,11 @@ const SKIP_PATHS = new Set<string>(['/health', '/health/ready'])
 export function requestLogger(): MiddlewareHandler {
   return async (c, next) => {
     const start = Date.now()
+
     await next()
+
     if (SKIP_PATHS.has(c.req.path)) return
+
     logger.info(
       {
         method: c.req.method,
