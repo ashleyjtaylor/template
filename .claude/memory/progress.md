@@ -12,6 +12,36 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-08 — `apps/api` foundations: logger, request ID, typed errors, security middleware, graceful shutdown
+
+- **Branch / PR**: `feat/api-foundations`
+- **What landed**:
+  - **`apps/api/src/lib/logger.ts`** — pino 10.3.1 (JSON in prod, pino-pretty in dev), AsyncLocalStorage-backed request context with `runWithContext()` / `getRequestId()` helpers, pino mixin that automatically tags every log line with the current request ID, base fields `{ service: 'api', release: env.GIT_SHA }`.
+  - **`apps/api/src/lib/errors.ts`** — abstract `HttpError` base + six subclasses (`ValidationError` 400, `UnauthorizedError` 401, `ForbiddenError` 403, `NotFoundError` 404, `ConflictError` 409, `InternalError` 500), `formatError()` that returns the canonical wire shape `{ code, message, details? }`. Lives in-app for now; moves to `packages/errors` when the worker arrives.
+  - **`apps/api/src/lib/shutdown.ts`** — registers SIGTERM/SIGINT handlers that call `server.close()`, wait up to `SHUTDOWN_TIMEOUT_MS` for in-flight requests to drain, then `process.exit(0)`. Returns an unregister function (used in tests). Idempotent — second signal is a no-op.
+  - **Three middlewares** in `apps/api/src/middleware/`:
+    - `request-id.ts` — generates a UUID via `crypto.randomUUID()`, sets `X-Request-Id` response header, seeds the ALS context.
+    - `request-logger.ts` — logs one line per request on completion (`{ method, path, status, durationMs }`); skips `/health` (ALB probe noise).
+    - `error-handler.ts` — `app.onError()` callback that formats `HttpError` subclasses, maps Hono `HTTPException` to the same wire shape, and falls back to a scrubbed `500 InternalError` for unhandled errors (original logged with stack).
+  - **`apps/api/src/app.ts`** — `createApp()` factory wires the middleware chain in the locked order (`requestId → requestLogger → secureHeaders → cors → bodyLimit → routes → onError`). Optional `corsOrigins` and `bodyLimitBytes` factory props default to env values, override-able from tests.
+  - **`apps/api/src/index.ts`** — registers the shutdown hook against the `serve()` instance.
+  - **`apps/api/src/env.ts`** — adds `NODE_ENV`, `LOG_LEVEL`, `CORS_ORIGINS` (csv → array), `BODY_LIMIT_BYTES` (default 1 MB), `SHUTDOWN_TIMEOUT_MS` (default 25 s) — all optional with sensible defaults.
+  - **`infra/cdk/lib/app-stack.ts`** — explicit `stopTimeout: Duration.seconds(30)` on the API container with a comment naming the cross-file invariant against `SHUTDOWN_TIMEOUT_MS`.
+  - **`apps/api/vitest.config.ts`** — sets `NODE_ENV=test` and `LOG_LEVEL=silent` for test runs so the suite doesn't spew JSON logs.
+  - **27 tests** across four files (errors, logger ALS, shutdown, app integration) — including request-ID format, security headers, CORS allow/deny, body limit, error wire shape, request-logger /health skip.
+- **What's now possible**:
+  - Throw a typed error from any future handler — `throw new NotFoundError('user missing')` → `404 { code: "NotFoundError", message: "user missing" }` on the wire, no per-handler `try/catch` plumbing.
+  - Filter all logs from one request: `cloudwatch logs filter-pattern '{ $.requestId = "abc-..." }'` returns the full story for that request.
+  - Tear down with no in-flight loss: ECS rolling deploy → SIGTERM → app drains for up to 25 s → exits cleanly before ECS's 30 s `stopTimeout`.
+  - CORS-protected by default. When `apps/web` lands, set `CORS_ORIGINS=https://app.staging.<domain>` on the ECS task and that's it.
+- **Deferred** (explicit follow-up surface):
+  - **Rate limiting** — better-auth handles its own auth-route limiter; a generic Hono limiter for tRPC arrives once Redis exists.
+  - **tRPC + typed contract** — lands with the first non-`/health` route.
+  - **Sentry** — not wired; CloudWatch + structured logs cover triage until real users hit production.
+  - **Auth middleware** (`getCurrentUser`, `assertCan`) — lands with better-auth + sessions.
+  - **`packages/errors`, `packages/types`, `packages/schemas`** — extracted on first ≥2-consumer need (likely worker arrival).
+  - **OpenTelemetry / X-Ray distributed tracing** — Sentry perf covers 80% per overview; defer indefinitely.
+
 ## 2026-05-08 — `apps/api` with `/health`, deployed to staging end-to-end
 
 - **Branch / PRs**: `feat/api-health` (#10) + `fix/ecr-lifecycle-rules` (#11)
