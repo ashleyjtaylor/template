@@ -9,6 +9,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Lock the GITHUB_TOKEN to least privilege by default. Deploy jobs override
+# per-job to add `id-token: write` for OIDC.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -17,7 +22,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.0.5
         with:
-          version: 10.33.4
+          version: 11.0.8
 
       - uses: actions/setup-node@v6.4.0
         with:
@@ -42,7 +47,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.0.5
         with:
-          version: 10.33.4
+          version: 11.0.8
 
       - uses: actions/setup-node@v6.4.0
         with:
@@ -64,7 +69,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.0.5
         with:
-          version: 10.33.4
+          version: 11.0.8
 
       - uses: actions/setup-node@v6.4.0
         with:
@@ -76,7 +81,23 @@ jobs:
       - name: Lint commits
         run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
 
-  deploy-staging:
+  docker-build:
+    # Build the API image on PRs to catch Dockerfile breakage before it hits main.
+    # On push to main the `build-image` job covers this and pushes to ECR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Build API image
+        run: |
+          docker build \
+            --build-arg GIT_SHA=pr-${{ github.event.pull_request.number }} \
+            -f apps/api/Dockerfile \
+            -t template-api:pr \
+            .
+
+  deploy-infra:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [ci, cdk]
     runs-on: ubuntu-latest
@@ -89,7 +110,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.0.5
         with:
-          version: 10.33.4
+          version: 11.0.8
 
       - uses: actions/setup-node@v6.4.0
         with:
@@ -104,7 +125,130 @@ jobs:
           # Region must match `aws.region` in infra/cdk/lib/config.ts
           aws-region: eu-west-1
 
-      - name: CDK deploy
+      - name: Deploy network + data stacks
         working-directory: infra/cdk
-        # Stack pattern must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts
-        run: pnpm exec cdk deploy "template-staging-*" --require-approval never
+        # Stack names must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts
+        run: pnpm exec cdk deploy template-staging-network template-staging-data --require-approval never
+
+  build-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [deploy-infra]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image-tag: ${{ steps.tag.outputs.image-tag }}
+      image-uri: ${{ steps.tag.outputs.image-uri }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2.1.5
+
+      - id: tag
+        # Repo name must match `repositoryName` in infra/cdk/lib/data-stack.ts
+        run: |
+          TAG=${{ github.sha }}
+          URI=${{ steps.ecr.outputs.registry }}/template-staging-api:$TAG
+          echo "image-tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image-uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        run: |
+          docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -f apps/api/Dockerfile \
+            -t ${{ steps.tag.outputs.image-uri }} \
+            .
+          docker push ${{ steps.tag.outputs.image-uri }}
+
+  deploy-app:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-image]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: pnpm/action-setup@v6.0.5
+        with:
+          version: 11.0.8
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Deploy app stack
+        working-directory: infra/cdk
+        run: |
+          pnpm exec cdk deploy template-staging-app \
+            --exclusively \
+            --require-approval never \
+            -c imageTag=${{ needs.build-image.outputs.image-tag }}
+
+  smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [deploy-app]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - id: alb
+        name: Resolve ALB DNS from CFN outputs
+        run: |
+          DNS=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-app \
+            --query 'Stacks[0].Outputs[?OutputKey==`AlbDnsName`].OutputValue' \
+            --output text)
+          if [ -z "$DNS" ]; then
+            echo "AlbDnsName output not found on template-staging-app"
+            exit 1
+          fi
+          echo "dns=$DNS" >> "$GITHUB_OUTPUT"
+
+      - name: Curl /health and verify version matches the deployed sha
+        env:
+          ALB_DNS: ${{ steps.alb.outputs.dns }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -u
+          for i in $(seq 1 30); do
+            if RESPONSE=$(curl -fsS --max-time 5 "http://$ALB_DNS/health"); then
+              echo "attempt $i: $RESPONSE"
+              if echo "$RESPONSE" | jq -e --arg sha "$EXPECTED_SHA" '.status == "ok" and .version == $sha' > /dev/null; then
+                echo "Smoke test passed"
+                exit 0
+              fi
+              echo "version mismatch — rolling update may still be in progress"
+            else
+              echo "attempt $i: /health not yet responding"
+            fi
+            sleep 10
+          done
+          echo "Smoke test failed after 30 attempts (5 minutes)"
+          exit 1
