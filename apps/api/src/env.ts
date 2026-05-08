@@ -37,8 +37,12 @@ const schema = z
   .transform((parsed) => {
     // RDS Postgres has `rds.force_ssl=1`; the connection is rejected without
     // TLS. Local Postgres (Compose, CI service container) doesn't speak SSL
-    // — gate on the host name so we only opt in for RDS endpoints.
-    const isRds = parsed.DB_HOST.endsWith('rds.amazonaws.com')
+    // — gate on the host name so we only opt in for RDS endpoints. Anchor
+    // the suffix match to a subdomain boundary (`.rds.amazonaws.com`) so a
+    // host like `evilrds.amazonaws.com` doesn't accidentally pass.
+    const normalizedHost = parsed.DB_HOST.trim().toLowerCase()
+    const isRds =
+      normalizedHost === 'rds.amazonaws.com' || normalizedHost.endsWith('.rds.amazonaws.com')
     const sslSuffix = isRds ? '?sslmode=require' : ''
 
     return {
