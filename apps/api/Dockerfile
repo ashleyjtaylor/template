@@ -36,8 +36,9 @@ RUN pnpm --filter @template/api deploy --prod --ignore-scripts /prod
 # Re-generate the Prisma Client into the deployed node_modules. `pnpm deploy`
 # creates a fresh node_modules in /prod with no .prisma artifacts, so without
 # this step the runtime would fail on import. `prisma` is in runtime deps so
-# the CLI is available in /prod/node_modules/.bin.
-RUN cp -r apps/api/prisma /prod/prisma
+# the CLI is available in /prod/node_modules/.bin. prisma.config.ts ships
+# alongside the schema so the migrator task can `prisma migrate deploy`.
+RUN cp -r apps/api/prisma /prod/prisma && cp apps/api/prisma.config.ts /prod/prisma.config.ts
 RUN cd /prod && node_modules/.bin/prisma generate
 
 FROM node:24.15.0-bookworm-slim AS runner
