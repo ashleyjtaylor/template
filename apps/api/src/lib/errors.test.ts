@@ -18,8 +18,9 @@ describe('HttpError subclasses', () => {
     [NotFoundError, 404, 'NotFoundError'],
     [ConflictError, 409, 'ConflictError'],
     [InternalError, 500, 'InternalError']
-  ])('%o has the right status and code', (Cls, status, code) => {
+  ])('should expose status %d and code "%s" on %o', (Cls, status, code) => {
     const err = new Cls('boom')
+
     expect(err.status).toBe(status)
     expect(err.code).toBe(code)
     expect(err.message).toBe('boom')
@@ -27,13 +28,15 @@ describe('HttpError subclasses', () => {
 })
 
 describe('formatError', () => {
-  it('omits details when undefined', () => {
+  it('should omit details when undefined', () => {
     const err = new NotFoundError('missing')
+
     expect(formatError(err)).toEqual({ code: 'NotFoundError', message: 'missing' })
   })
 
-  it('includes details when provided', () => {
+  it('should include details when provided', () => {
     const err = new ValidationError('bad input', { field: 'email' })
+
     expect(formatError(err)).toEqual({
       code: 'ValidationError',
       message: 'bad input',

@@ -8,7 +8,7 @@ afterEach(() => {
 })
 
 describe('GET /health', () => {
-  it('returns 200 with status ok, the configured version, and numeric uptime', async () => {
+  it('should return 200 with status, the configured version, and a numeric uptime', async () => {
     const app = createApp({ gitSha: 'test-sha' })
 
     const res = await app.request('/health')
@@ -21,7 +21,7 @@ describe('GET /health', () => {
     })
   })
 
-  it('echoes whatever gitSha the factory is given', async () => {
+  it('should echo whatever gitSha the factory is given', async () => {
     const app = createApp({ gitSha: 'unknown' })
 
     const res = await app.request('/health')
@@ -32,7 +32,7 @@ describe('GET /health', () => {
 })
 
 describe('error handling', () => {
-  it('formats HttpError subclasses with the right status and code', async () => {
+  it('should format HttpError subclasses with the right status and code', async () => {
     const app = createApp({ gitSha: 'test' })
     app.get('/test/not-found', () => {
       throw new NotFoundError('user missing')
@@ -47,7 +47,7 @@ describe('error handling', () => {
     })
   })
 
-  it('scrubs unhandled error messages and returns 500', async () => {
+  it('should scrub unhandled error messages and return 500', async () => {
     const app = createApp({ gitSha: 'test' })
     app.get('/test/boom', () => {
       throw new Error('secret database url leak')
@@ -66,25 +66,29 @@ describe('error handling', () => {
 })
 
 describe('request id', () => {
-  it('sets X-Request-Id on every response', async () => {
+  it('should set X-Request-Id with a req_ prefix on every response', async () => {
     const app = createApp({ gitSha: 'test' })
+
     const res = await app.request('/health')
     const id = res.headers.get('x-request-id')
-    expect(id).toMatch(/^[0-9a-f-]{36}$/i)
+
+    expect(id).toMatch(/^req_[0-9a-f-]{36}$/i)
   })
 })
 
 describe('security headers', () => {
-  it('sets sane defaults on every response', async () => {
+  it('should set sane defaults on every response', async () => {
     const app = createApp({ gitSha: 'test' })
+
     const res = await app.request('/health')
+
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
     expect(res.headers.get('x-frame-options')).toBeTruthy()
   })
 })
 
 describe('cors', () => {
-  it('allows preflight from a configured origin', async () => {
+  it('should allow preflight from a configured origin', async () => {
     const app = createApp({
       gitSha: 'test',
       corsOrigins: ['https://app.example.com']
@@ -101,7 +105,7 @@ describe('cors', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
   })
 
-  it('omits CORS headers from disallowed origins', async () => {
+  it('should omit CORS headers from disallowed origins', async () => {
     const app = createApp({
       gitSha: 'test',
       corsOrigins: ['https://app.example.com']
@@ -120,7 +124,7 @@ describe('cors', () => {
 })
 
 describe('body limit', () => {
-  it('rejects oversized bodies with 413', async () => {
+  it('should reject oversized bodies with 413', async () => {
     const app = createApp({ gitSha: 'test', bodyLimitBytes: 100 })
     app.post('/test/echo', (c) => c.json({ ok: true }))
 
@@ -141,7 +145,7 @@ describe('body limit', () => {
 })
 
 describe('request logger', () => {
-  it('does not log /health requests', async () => {
+  it('should not log /health requests', async () => {
     const app = createApp({ gitSha: 'test' })
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger)
 
@@ -151,7 +155,7 @@ describe('request logger', () => {
     expect(requestCalls).toHaveLength(0)
   })
 
-  it('logs non-/health requests with method, path, status, duration', async () => {
+  it('should log non-/health requests with method, path, status, and duration', async () => {
     const app = createApp({ gitSha: 'test' })
     app.get('/test/anything', (c) => c.json({}))
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger)

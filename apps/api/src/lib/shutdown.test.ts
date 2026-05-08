@@ -17,7 +17,7 @@ describe('registerShutdown', () => {
     vi.useRealTimers()
   })
 
-  it('calls server.close on SIGTERM and exits 0 when drain succeeds', () => {
+  it('should call server.close on SIGTERM and exit 0 when drain succeeds', () => {
     const close = vi.fn((cb?: (err?: Error) => void) => cb?.())
     const server: ClosableServer = { close }
 
@@ -28,7 +28,7 @@ describe('registerShutdown', () => {
     expect(exitSpy).toHaveBeenCalledWith(0)
   })
 
-  it('exits 0 after the timeout when close hangs', () => {
+  it('should exit 0 after the timeout when close hangs', () => {
     vi.useFakeTimers()
     const close = vi.fn() // never invokes its callback
     const server: ClosableServer = { close }
@@ -40,7 +40,7 @@ describe('registerShutdown', () => {
     expect(exitSpy).toHaveBeenCalledWith(0)
   })
 
-  it('exits 1 when server.close errors', () => {
+  it('should exit 1 when server.close errors', () => {
     const close = vi.fn((cb?: (err?: Error) => void) => cb?.(new Error('boom')))
     const server: ClosableServer = { close }
 
@@ -50,7 +50,7 @@ describe('registerShutdown', () => {
     expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('is idempotent — second signal is ignored', () => {
+  it('should ignore a second signal once shutdown is in progress', () => {
     const close = vi.fn((cb?: (err?: Error) => void) => cb?.())
     const server: ClosableServer = { close }
 
