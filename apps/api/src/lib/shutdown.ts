@@ -2,6 +2,11 @@ import { logger } from './logger.js'
 
 export interface ShutdownOptions {
   timeoutMs: number
+  // Resource cleanup that runs *after* the HTTP server has drained
+  // in-flight requests but *before* the process exits. Each hook is awaited
+  // in order; failures are logged but do not block exit. Use this for
+  // closing DB connection pools, queue clients, etc.
+  beforeExit?: (() => Promise<void> | void)[]
 }
 
 // Structural type so this works with both node:http's Server and whatever
@@ -12,9 +17,19 @@ export interface ClosableServer {
 
 export function registerShutdown(
   server: ClosableServer,
-  { timeoutMs }: ShutdownOptions
+  { timeoutMs, beforeExit = [] }: ShutdownOptions
 ): () => void {
   let shuttingDown = false
+
+  const runBeforeExit = async () => {
+    for (const hook of beforeExit) {
+      try {
+        await hook()
+      } catch (err) {
+        logger.error({ err }, 'shutdown: beforeExit hook failed')
+      }
+    }
+  }
 
   const shutdown = (signal: NodeJS.Signals) => {
     if (shuttingDown) return
@@ -28,12 +43,14 @@ export function registerShutdown(
     }, timeoutMs)
     force.unref()
 
-    server.close((err) => {
-      clearTimeout(force)
+    server.close(async (err) => {
       if (err) {
+        clearTimeout(force)
         logger.error({ err }, 'shutdown: server.close errored, exiting non-zero')
         process.exit(1)
       }
+      await runBeforeExit()
+      clearTimeout(force)
       logger.info('shutdown: drain complete')
       process.exit(0)
     })

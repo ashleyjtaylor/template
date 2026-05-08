@@ -8,17 +8,32 @@ const csvToArray = (v: unknown) =>
         .filter(Boolean)
     : v
 
-const schema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
-  GIT_SHA: z.preprocess((v) => v || undefined, z.string().default('unknown')),
-  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
-  CORS_ORIGINS: z.preprocess(csvToArray, z.array(z.string()).default([])),
-  BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(1_048_576),
-  // Must stay <= the ECS task `stopTimeout` set in infra/cdk/lib/app-stack.ts.
-  // ECS sends SIGKILL once stopTimeout elapses; we want to drain and exit
-  // cleanly before that happens.
-  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(25_000)
-})
+const schema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    PORT: z.coerce.number().int().positive().default(3000),
+    GIT_SHA: z.preprocess((v) => v || undefined, z.string().default('unknown')),
+    LOG_LEVEL: z
+      .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])
+      .default('info'),
+    CORS_ORIGINS: z.preprocess(csvToArray, z.array(z.string()).default([])),
+    BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(1_048_576),
+    // Must stay <= the ECS task `stopTimeout` set in infra/cdk/lib/app-stack.ts.
+    // ECS sends SIGKILL once stopTimeout elapses; we want to drain and exit
+    // cleanly before that happens.
+    SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(25_000),
+    // DB connection — defaults match docker-compose.yml at the repo root so
+    // local dev works without any further env wiring. Production overrides
+    // all five via secrets injected by infra/cdk/lib/app-stack.ts.
+    DB_HOST: z.string().default('localhost'),
+    DB_PORT: z.coerce.number().int().positive().default(5432),
+    DB_USER: z.string().default('postgres'),
+    DB_PASSWORD: z.string().default('postgres'),
+    DB_NAME: z.string().default('template_dev')
+  })
+  .transform((parsed) => ({
+    ...parsed,
+    DATABASE_URL: `postgresql://${parsed.DB_USER}:${encodeURIComponent(parsed.DB_PASSWORD)}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`
+  }))
 
 export const env = schema.parse(process.env)

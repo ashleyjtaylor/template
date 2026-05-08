@@ -12,6 +12,36 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-08 — Database setup and check (RDS Postgres, Prisma, /health/ready, migration ECS task)
+
+- **Branch / PR**: `feat/api-db`
+- **Plan**: `docs/tickets/03-database-setup-and-check.md`
+- **What landed**:
+  - **Prisma + Postgres** wired into `apps/api`: `prisma/schema.prisma` with one lighthouse model `Meta` mapping to `_meta`, first migration `0_init` creating the table, `apps/api/src/lib/db.ts` exporting a singleton `PrismaClient` with lazy connect.
+  - **`GET /health/ready`** route (`apps/api/src/middleware/health-ready.ts`): probes `prisma.meta.findFirst()` with a 2 s `Promise.race` timeout. `200 { status: "ok", checks: { db: "ok" } }` when reachable; `503 { status: "unavailable", checks: { db: "down" } }` on throw or timeout. Excluded from the request logger (matches `/health` to keep CloudWatch noise down).
+  - **`env.ts` extended**: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (with sensible local-dev defaults matching `docker-compose.yml`); a Zod `transform` composes `DATABASE_URL` with URL-encoded password.
+  - **Graceful shutdown** updated: `registerShutdown` accepts a `beforeExit` array; `apps/api/src/index.ts` passes `[() => prisma.$disconnect()]` so DB connections close cleanly inside the `SHUTDOWN_TIMEOUT_MS` window.
+  - **Dockerfile**: copies `prisma/` schema, runs `prisma generate` after install, and re-runs it after `pnpm deploy --prod` against `/prod` (where the deploy strips the original generated artifacts). `prisma` moved to runtime deps so the CLI is available in `/prod`. Bookworm-slim base now installs `openssl + ca-certificates` to satisfy Prisma's libssl detection.
+  - **CDK — `NetworkStack`**: adds `rdsSg` (inbound `:5432` from `ecsSg` only) and `CfnOutput`s for `PrivateSubnetIds` + `EcsSecurityGroupId` (consumed by the `migrate-db` CI step).
+  - **CDK — `DataStack`**: adds RDS Postgres (`db.t4g.micro`, 20 GB gp3, single-AZ, 7-day backups, encrypted at rest, `removalPolicy: DESTROY`, `deletionProtection: false`) with auto-generated Secrets Manager credentials. **The ECS cluster moves here from `AppStack`** so the migrator one-off task can run before `AppStack` deploys. Adds the migrator `FargateTaskDefinition` (uses the API ECR image at `imageTag` context, default CMD `prisma migrate deploy`), its log group, and `CfnOutput`s for `MigratorTaskDefArn`, `ApiClusterName`, `MigratorLogGroupName`.
+  - **CDK — `AppStack`**: stops creating the cluster; imports it from `DataStack` props. Injects the same DB secrets into the API container via `ecs.Secret.fromSecretsManager` so app code reads `DB_*` env vars and composes `DATABASE_URL` itself.
+  - **`bin/app.ts`**: passes `imageTag` context to `DataStack` too (so the migrator task definition references the SHA `build-image` is about to push).
+  - **CI workflow**: `ci` job adds a `postgres:18-alpine` service container with `template_test` database and a step that applies `prisma migrate deploy` against it before tests. New `migrate-db` job between `build-image` and `deploy-app`: resolves the migrator task definition + cluster + subnets + SG from CFN outputs, calls `aws ecs run-task`, waits for completion, fails the workflow on non-zero exit (dumping the last 5 minutes of `/ecs/template-staging-migrator` logs). `deploy-infra` now passes `-c imageTag=$SHA` so DataStack updates the migrator task def on every run.
+  - **`docker-compose.yml`** at repo root: Postgres on `:5432` with two databases (`template_dev`, `template_test`) created via an init script. Volume mounted at `/var/lib/postgresql` per Postgres 18+ guidance.
+  - **New runbook** `docs/runbooks/local-postgres.md`: Compose setup, applying migrations to both databases, generating a new migration via `prisma migrate dev`, resetting local data.
+  - **Tests**: 4 new tests across two files. `middleware/health-ready.test.ts` (unit, mocked Prisma): 200 success, 503 throw, 503 timeout. `app.integration.test.ts` (integration, real Postgres): hits `/health/ready` and asserts the round-trip works. 32 tests total now.
+  - **`pnpm-workspace.yaml`** `allowBuilds`: adds `prisma`, `@prisma/client`, `@prisma/engines`.
+- **What's now possible**:
+  - The deploy chain proves the full migration loop end-to-end: `deploy-infra` → `build-image` → `migrate-db` → `deploy-app` → `smoke`. Adding new schema changes is just `prisma migrate dev` locally + commit.
+  - `/health/ready` distinguishes "DB reachable + schema applied" from "DB down or migration missed", giving monitoring a strong signal that's independent of `/health` (which stays liveness-only for the ALB).
+  - Local development boots a real Postgres via `docker compose up -d postgres` + applying migrations; same connection shape as production (just different host).
+- **Deferred**:
+  - **Prisma error → typed error mapper** (P2002 → `ConflictError`, P2025 → `NotFoundError`, etc.) — lands with the first real-entity handler that throws on Prisma errors.
+  - **Per-test transaction rollback** — current integration test is read-only; arrives with the first write-side test.
+  - **Redis, BullMQ, S3, application Secrets Manager secrets** — separate features.
+  - **Multi-AZ RDS, Performance Insights, backup-restore runbook** — when production deploys.
+  - **Other Compose services** (Redis / MinIO / Mailhog) — added when their feature lands.
+
 ## 2026-05-08 — `apps/api` foundations: logger, request ID, typed errors, security middleware, graceful shutdown
 
 - **Branch / PR**: `feat/api-foundations`

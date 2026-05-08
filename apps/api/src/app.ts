@@ -4,6 +4,7 @@ import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { env } from './env.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { healthReady } from './middleware/health-ready.js'
 import { requestId } from './middleware/request-id.js'
 import { requestLogger } from './middleware/request-logger.js'
 
@@ -34,6 +35,8 @@ export function createApp({
       uptime: Math.floor((Date.now() - startedAt) / 1000)
     })
   )
+
+  app.get('/health/ready', healthReady)
 
   app.onError(errorHandler)
 

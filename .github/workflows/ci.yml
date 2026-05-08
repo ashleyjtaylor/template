@@ -21,6 +21,28 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      # Postgres for integration tests. The DB name + creds match the defaults
+      # in apps/api/src/env.ts so test code only needs to override DB_NAME.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: template_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: template_test
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -34,6 +56,11 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations to the test database
+        run: pnpm --filter @template/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/template_test
 
       - name: Biome
         run: pnpm exec biome ci
@@ -131,8 +158,10 @@ jobs:
 
       - name: Deploy network + data stacks
         working-directory: infra/cdk
-        # Stack names must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts
-        run: pnpm exec cdk deploy template-staging-network template-staging-data --require-approval never
+        # Stack names must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts.
+        # `imageTag` is consumed by the migrator task def in DataStack so it
+        # references the image build-image is about to push.
+        run: pnpm exec cdk deploy template-staging-network template-staging-data --require-approval never -c imageTag=${{ github.sha }}
 
   build-image:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
@@ -173,9 +202,86 @@ jobs:
             .
           docker push ${{ steps.tag.outputs.image-uri }}
 
-  deploy-app:
+  migrate-db:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [build-image]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Resolve task def + cluster + network from CFN outputs
+        id: cfn
+        run: |
+          set -e
+          TASK_DEF=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-data \
+            --query 'Stacks[0].Outputs[?OutputKey==`MigratorTaskDefArn`].OutputValue' \
+            --output text)
+          CLUSTER=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-data \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiClusterName`].OutputValue' \
+            --output text)
+          LOG_GROUP=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-data \
+            --query 'Stacks[0].Outputs[?OutputKey==`MigratorLogGroupName`].OutputValue' \
+            --output text)
+          SUBNETS=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-network \
+            --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnetIds`].OutputValue' \
+            --output text)
+          SG=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-network \
+            --query 'Stacks[0].Outputs[?OutputKey==`EcsSecurityGroupId`].OutputValue' \
+            --output text)
+          {
+            echo "task-def=$TASK_DEF"
+            echo "cluster=$CLUSTER"
+            echo "log-group=$LOG_GROUP"
+            echo "subnets=$SUBNETS"
+            echo "sg=$SG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run migrator task and wait for completion
+        env:
+          TASK_DEF: ${{ steps.cfn.outputs.task-def }}
+          CLUSTER: ${{ steps.cfn.outputs.cluster }}
+          LOG_GROUP: ${{ steps.cfn.outputs.log-group }}
+          SUBNETS: ${{ steps.cfn.outputs.subnets }}
+          SG: ${{ steps.cfn.outputs.sg }}
+        run: |
+          set -eo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$TASK_DEF" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SG}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          echo "Started task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Migrator task exited with code $EXIT_CODE"
+            echo "--- Last 5 minutes of $LOG_GROUP ---"
+            aws logs tail "$LOG_GROUP" --since 5m || true
+            exit 1
+          fi
+          echo "Migrator task completed successfully"
+
+  deploy-app:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: [migrate-db]
     runs-on: ubuntu-latest
     environment: staging
     permissions:

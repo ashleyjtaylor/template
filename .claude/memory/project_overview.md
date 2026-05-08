@@ -50,7 +50,7 @@ infra/
   cdk/
     network-stack.ts   VPC, subnets, NAT, security groups
     data-stack.ts      RDS, Redis, ECR, Secrets, S3 (uploads)
-    app-stack.ts       ECS cluster + services, ALB, CloudFront, Route53, ACM
+    app-stack.ts       ECS services (api + worker), ALB, CloudFront, Route53, ACM
 
 templates/
   spa-app/            scaffold for `pnpm scaffold:app <name>`
@@ -372,11 +372,11 @@ s3://{product}-{env}-uploads/{orgId}/{kind}/{uploadId}
 
 ```
 {product}-{env}-network    VPC, subnets, NAT gateway(s), security groups
-{product}-{env}-data       RDS, ElastiCache Redis, ECR, Secrets Manager, S3 (uploads)
-{product}-{env}-app        ECS cluster + services (api + worker), ALB, CloudFront, Route53, ACM
+{product}-{env}-data       RDS, ElastiCache Redis, ECR, Secrets Manager, S3 (uploads), ECS cluster, migrator task def
+{product}-{env}-app        ECS services (api + worker), ALB, CloudFront, Route53, ACM
 ```
 
-ECR lives in `data` (image must exist before ECS can start). Tags applied via stack-level CDK aspects: `Product`, `Environment`, `ManagedBy=cdk`.
+ECR lives in `data` (image must exist before ECS can start). The ECS cluster also lives in `data` so the migrator one-off task can run before `app` deploys; the api / worker services in `app` import the cluster via cross-stack ref. Tags applied via stack-level CDK aspects: `Product`, `Environment`, `ManagedBy=cdk`.
 
 ### Environments
 
