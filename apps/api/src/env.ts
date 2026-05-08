@@ -31,6 +31,9 @@ const schema = z
     DB_PASSWORD: z.string().default('postgres'),
     DB_NAME: z.string().default('template_dev')
   })
+  // URL composition is duplicated in apps/api/prisma.config.ts (the Prisma
+  // CLI's config file, which can't import from src/). Keep the two in sync
+  // if you change either side.
   .transform((parsed) => {
     // RDS Postgres has `rds.force_ssl=1`; the connection is rejected without
     // TLS. Local Postgres (Compose, CI service container) doesn't speak SSL

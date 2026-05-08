@@ -20,7 +20,8 @@ const database = envVar('DB_NAME', 'template_dev')
 // RDS Postgres has `rds.force_ssl=1`; the connection is rejected without
 // TLS. Local Postgres (Compose, CI service container) doesn't speak SSL —
 // gate on the host name so we only opt in for RDS endpoints.
-const sslSuffix = host.endsWith('rds.amazonaws.com') ? '?sslmode=require' : ''
+const isRds = host.endsWith('rds.amazonaws.com')
+const sslSuffix = isRds ? '?sslmode=require' : ''
 
 const url = `postgresql://${user}:${password}@${host}:${port}/${database}${sslSuffix}`
 
