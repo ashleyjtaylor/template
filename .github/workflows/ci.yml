@@ -308,11 +308,16 @@ jobs:
 
       - name: Deploy app stack
         working-directory: infra/cdk
+        # `imageTag=${{ github.sha }}` matches what `build-image` tagged the
+        # image with (also `github.sha`). Don't use `needs.build-image.outputs`
+        # — those aren't reliably preserved when re-running an individual job,
+        # which silently produces an empty `imageTag` and a tagless image
+        # reference (Docker resolves to `:latest` which we never push).
         run: |
           pnpm exec cdk deploy template-staging-app \
             --exclusively \
             --require-approval never \
-            -c imageTag=${{ needs.build-image.outputs.image-tag }}
+            -c imageTag=${{ github.sha }}
 
   smoke:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
