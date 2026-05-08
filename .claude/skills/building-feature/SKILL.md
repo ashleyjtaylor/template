@@ -21,7 +21,9 @@ description: When building and on completion of a feature, ensure it follows and
 
 **Documentation**
 - Update `.claude/memory/project_overview.md` if the feature changes architecture, schema, deploy topology, or any cross-cutting concern.
-- Add or update a runbook in `docs/runbooks/` if the feature introduces ops procedures (restore, rotation, backfill).
+- Update `docs/system-design.md` if the feature adds, removes, or changes a deployed resource, or a connection between services. Use Mermaid diagrams; fall back to bullet lists where a diagram would be noise. Skip pure app-code changes that don't touch infra or service topology.
+- Add a new entry at the top of `.claude/memory/progress.md` when a consequential feature merges. One section per milestone, not per commit. Each entry: date, commit/PR refs, what landed, what's now possible, what's deferred. Skip renovate bumps, lint fixes, and other trivial changes.
+- Add or update a runbook in `docs/runbooks/` if the feature introduces any procedure that needs to be performed manually or out-of-band — initial bootstrap, secret population, IAM setup, recovery from failure, periodic rotation, data backfills, or anything a human will need step-by-step guidance for later. Write the runbook now, while the steps are fresh — not when someone hits the situation cold.
 - Don't write README/docs for trivial features.
 
 **Review (before committing — be your own code reviewer)**
