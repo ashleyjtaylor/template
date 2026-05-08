@@ -16,6 +16,15 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 - **Branch / PR**: `feat/api-db`
 - **Plan**: `docs/tickets/03-database-setup-and-check.md`
+- **Verified live**: `GET http://<alb-dns>/health/ready` → `200 { status: "ok", checks: { db: "ok" } }`. End-to-end loop confirmed: `deploy-infra` → `build-image` → `migrate-db` (ECS one-off task applies migrations) → `deploy-app` (rolling update) → `smoke` (asserts the running container's `version` matches the pushed SHA). The runtime API container connects to RDS over TLS via `@prisma/adapter-pg`.
+- **Post-merge fixes** (each landed as its own PR after the feature merge — captured in the `infra` skill's "common failure patterns" so they don't recur):
+  - ECR rejected lifecycle policy with two rules targeting the same `tagStatus` — split into one TAGGED + one UNTAGGED rule.
+  - RDS rejected `databaseName: 'template'` as an engine-reserved word — renamed to `app`.
+  - RDS doesn't expose Postgres `18.0` (engine starts at `18.1`) — pinned to `VER_18_3`.
+  - Migrator ECS task command failed with `SyntaxError: missing ) after argument list` because `node node_modules/.bin/prisma` invokes node on a `/bin/sh` wrapper — dropped the `node` prefix.
+  - `deploy-app` was emitting a tagless image URI (Docker → `:latest`) when `needs.build-image.outputs.image-tag` was empty on individual job re-runs — switched to `${{ github.sha }}` directly + `||` instead of `??` for the imageTag default so empty strings can't slip through.
+  - RDS rejected the runtime client's plaintext connection (`rds.force_ssl=1`) — appended `?sslmode=require` to the URL.
+  - `pg-connection-string` then interpreted `sslmode=require` as `verify-full` and failed on the Amazon-CA-signed cert — appended `&uselibpqcompat=true` for libpq-compatible "encrypt, don't validate" semantics.
 - **What landed**:
   - **Prisma + Postgres** wired into `apps/api`: `prisma/schema.prisma` with one lighthouse model `Meta` mapping to `_meta`, first migration creating the table. `apps/api/prisma.config.ts` (the Prisma-7-required CLI config) provides the `datasource.url` from `process.env.DB_*` (composition inlined, since the file ships to `/prod` where it can't import `src/env.ts`). `apps/api/src/lib/db.ts` constructs the runtime `PrismaClient` with the `@prisma/adapter-pg` adapter and stashes it on `globalThis` in non-production so hot-reload tools (tsx watch, vitest workers) reuse the connection instead of leaking on every reload.
   - **`GET /health/ready`** route (`apps/api/src/middleware/health-ready.ts`): probes `prisma.meta.findFirst()` with a 2 s `Promise.race` timeout. `200 { status: "ok", checks: { db: "ok" } }` when reachable; `503 { status: "unavailable", checks: { db: "down" } }` on throw or timeout. Excluded from the request logger (matches `/health` to keep CloudWatch noise down).
