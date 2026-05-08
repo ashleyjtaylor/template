@@ -22,10 +22,17 @@ const database = envVar('DB_NAME', 'template_dev')
 // gate on the host name so we only opt in for RDS endpoints. Anchor the
 // suffix match to a subdomain boundary (`.rds.amazonaws.com`) so a host
 // like `evilrds.amazonaws.com` doesn't accidentally pass.
+//
+// `uselibpqcompat=true` matters for the runtime client in src/env.ts (where
+// pg-connection-string interprets `sslmode=require` as `verify-full` and
+// trips on RDS's Amazon CA). The Prisma CLI binary engine uses libpq
+// semantics natively and ignores the flag, but we keep the two URLs
+// identical to honour the cross-file invariant. Switch to
+// `sslmode=verify-full` once the RDS CA bundle ships in the image.
 const normalizedHost = host.trim().toLowerCase()
 const isRds =
   normalizedHost === 'rds.amazonaws.com' || normalizedHost.endsWith('.rds.amazonaws.com')
-const sslSuffix = isRds ? '?sslmode=require' : ''
+const sslSuffix = isRds ? '?sslmode=require&uselibpqcompat=true' : ''
 
 const url = `postgresql://${user}:${password}@${host}:${port}/${database}${sslSuffix}`
 
