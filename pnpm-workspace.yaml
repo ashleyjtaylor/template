@@ -9,6 +9,9 @@ packages:
 allowBuilds:
   esbuild: true
   lefthook: true
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
 
 # Copy workspace packages into consumers' node_modules instead of symlinking.
 # Required for `pnpm deploy` to produce a self-contained directory in the Docker

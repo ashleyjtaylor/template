@@ -16,33 +16,45 @@ graph TB
             NAT["NAT Gateway<br/>(single)"]
         end
         subgraph PrivateSubnets["Private subnets"]
-            ECS["ECS Fargate task — api<br/>0.25 vCPU / 0.5 GB<br/>:3000"]
+            ECS["ECS Fargate service — api<br/>0.25 vCPU / 0.5 GB<br/>:3000"]
+            Migrator["ECS Fargate task — migrator<br/>(one-off, run on each deploy)"]
+            RDS[("RDS Postgres<br/>db.t4g.micro, 20 GB<br/>:5432")]
         end
     end
 
     ECR["ECR repo<br/>template-staging-api"]
-    Logs["CloudWatch Logs<br/>/ecs/template-staging-api<br/>30d retention"]
+    Logs["CloudWatch Logs<br/>/ecs/template-staging-api<br/>/ecs/template-staging-migrator<br/>30d retention"]
+    Secret["Secrets Manager<br/>template-staging-db-credentials"]
 
     Internet -->|HTTP :80| ALB
     ALB -->|target group<br/>health: GET /health| ECS
+    ECS -->|Postgres :5432| RDS
+    Migrator -->|prisma migrate deploy| RDS
     ECS -->|outbound via NAT| Internet
     ECR -.->|image pull on task start| ECS
+    ECR -.->|same image, override CMD| Migrator
+    Secret -.->|injected as DB_* env vars| ECS
+    Secret -.->|injected as DB_* env vars| Migrator
     ECS -.->|stdout / stderr| Logs
+    Migrator -.->|stdout / stderr| Logs
 ```
 
 **Security groups**
 - `albSg`: inbound `:80` from `0.0.0.0/0`
 - `ecsSg`: inbound `:3000` from `albSg` only
+- `rdsSg`: inbound `:5432` from `ecsSg` only
 - All other inbound denied (default)
 
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
-- `template-staging-data` — ECR repo (lifecycle: keep last 30 untagged, expire untagged > 14 days; `removalPolicy: DESTROY`, `autoDeleteImages`)
-- `template-staging-app` — ECS cluster, Fargate service, task def, ALB, target group, listener, log group
+- `template-staging-data` — ECR repo, RDS Postgres, Secrets Manager DB credentials, ECS cluster, migrator task definition + log group
+- `template-staging-app` — Fargate service, API task def, ALB, target group, listener, API log group
 
 All stacks have `terminationProtection: false` so `cdk destroy "template-staging-*"` tears them down without manual intervention.
 
-## Request path
+## Request paths
+
+**`/health`** — liveness probe used by ALB. No DB dependency.
 
 ```mermaid
 sequenceDiagram
@@ -58,22 +70,48 @@ sequenceDiagram
 
 `version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `uptime` is process uptime in whole seconds. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
 
+**`/health/ready`** — readiness probe used by internal monitoring. Hits the DB.
+
+```mermaid
+sequenceDiagram
+    participant Caller as Internal monitor
+    participant ALB
+    participant ECS as ECS task (api)
+    participant RDS as RDS Postgres
+
+    Caller->>ALB: GET /health/ready
+    ALB->>ECS: GET /health/ready
+    ECS->>RDS: SELECT * FROM _meta LIMIT 1<br/>(2s timeout)
+    alt DB reachable
+        RDS-->>ECS: row or null
+        ECS-->>ALB: 200 { status: ok, checks: { db: ok } }
+    else DB unreachable / timeout
+        ECS-->>ALB: 503 { status: unavailable, checks: { db: down } }
+    end
+    ALB-->>Caller: response
+```
+
+Failures here do **not** pull tasks out of rotation — ALB only watches `/health`. A flaky readiness probe surfaces in the monitoring dashboard rather than blackholing traffic.
+
 ## Deploy flow
 
 ```mermaid
 graph LR
-    Push[push to main] --> CI[ci]
+    Push[workflow_dispatch on main] --> CI[ci]
     Push --> CDK[cdk synth]
     CI --> Infra[deploy-infra]
     CDK --> Infra
-    Infra -->|cdk deploy<br/>network + data| Build[build-image]
-    Build -->|docker build<br/>push :sha to ECR| App[deploy-app]
+    Infra -->|cdk deploy<br/>network + data<br/>-c imageTag=sha| Build[build-image]
+    Build -->|docker build<br/>push :sha to ECR| Migrate[migrate-db]
+    Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| App[deploy-app]
     App -->|cdk deploy app<br/>-c imageTag=sha| Smoke[smoke]
     Smoke -->|curl /health<br/>assert version=sha| Done([deployed])
 ```
 
-- All deploy jobs run only on `push` to `main`, gated by `[ci, cdk]` passing.
+- Deploy jobs run on `workflow_dispatch` (manual trigger from the Actions tab) on `main`, gated by `[ci, cdk]` passing. _(Note: while the template is being scaffolded, deploys are gated on `workflow_dispatch` rather than push — see `docs/runbooks/staging-teardown-and-redeploy.md`.)_
 - AWS access via OIDC (`AWS_DEPLOY_ROLE_ARN` in the `staging` GitHub Environment).
+- `deploy-infra` passes `imageTag` so the migrator task definition references the SHA `build-image` is about to push. CFN doesn't validate ECR image existence at deploy time, so referring to a not-yet-pushed tag is fine.
+- `migrate-db` invokes `aws ecs run-task` against the migrator task definition, waits for it to stop, and fails the workflow on a non-zero exit (dumping the last 5 minutes of `/ecs/template-staging-migrator` logs).
 - `deploy-app` uses `cdk deploy --exclusively` so it does not re-confirm the network and data stacks.
 - The smoke step polls `/health` for up to 5 minutes and asserts the response's `version` matches the pushed SHA — catches "deploy succeeded but rolling update did not actually swap the image".
 
@@ -87,7 +125,7 @@ Stripe / SES / Sentry / OAuth providers will get their own subsection here as th
 
 These are designed for in `project_overview.md` but absent from the live system:
 
-- **Data**: RDS Postgres, ElastiCache Redis, S3 (uploads), Secrets Manager
+- **Data**: ElastiCache Redis, S3 (uploads). Application-level Secrets Manager secrets beyond the auto-generated DB credentials.
 - **Edge**: Route53, ACM, CloudFront, HTTPS / TLS, custom domain
 - **Apps**: `apps/worker` (BullMQ consumer), `apps/web`, `apps/internal`, `apps/portal`
 - **Packages**: `packages/auth`, `packages/db`, `packages/billing`, `packages/errors`, `packages/types`, `packages/schemas`, etc.

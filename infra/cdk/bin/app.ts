@@ -21,7 +21,10 @@ for (const env of envs) {
 
   const data = new DataStack(app, `${PRODUCT}-${env}-data`, {
     ...baseProps,
-    envName: env
+    envName: env,
+    vpc: network.vpc,
+    rdsSg: network.rdsSg,
+    imageTag
   })
 
   new AppStack(app, `${PRODUCT}-${env}-app`, {
@@ -31,6 +34,8 @@ for (const env of envs) {
     albSg: network.albSg,
     ecsSg: network.ecsSg,
     apiRepo: data.apiRepo,
+    cluster: data.cluster,
+    dbSecrets: data.dbSecrets,
     imageTag
   })
 }

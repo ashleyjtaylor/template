@@ -1,13 +1,15 @@
-import { Stack, type StackProps } from 'aws-cdk-lib'
+import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib'
 import { IpAddresses, Peer, Port, SecurityGroup, SubnetType, Vpc } from 'aws-cdk-lib/aws-ec2'
 import type { Construct } from 'constructs'
 
 export const APP_PORT = 3000
+export const DB_PORT = 5432
 
 export class NetworkStack extends Stack {
   readonly vpc: Vpc
   readonly albSg: SecurityGroup
   readonly ecsSg: SecurityGroup
+  readonly rdsSg: SecurityGroup
 
   constructor(scope: Construct, id: string, props: StackProps) {
     super(scope, id, props)
@@ -39,5 +41,25 @@ export class NetworkStack extends Stack {
       allowAllOutbound: true
     })
     this.ecsSg.addIngressRule(this.albSg, Port.tcp(APP_PORT), 'app port from ALB')
+
+    this.rdsSg = new SecurityGroup(this, 'RdsSg', {
+      vpc: this.vpc,
+      description: 'RDS Postgres: inbound 5432 from ECS SG only',
+      allowAllOutbound: false
+    })
+    this.rdsSg.addIngressRule(this.ecsSg, Port.tcp(DB_PORT), 'Postgres from ECS')
+
+    // CFN outputs consumed by the migrate-db CI step (it needs to start a
+    // one-off ECS task in the right subnets with the right SG).
+    new CfnOutput(this, 'PrivateSubnetIds', {
+      value: this.vpc
+        .selectSubnets({ subnetType: SubnetType.PRIVATE_WITH_EGRESS })
+        .subnetIds.join(','),
+      description: 'Comma-separated private subnet IDs for run-task network config'
+    })
+    new CfnOutput(this, 'EcsSecurityGroupId', {
+      value: this.ecsSg.securityGroupId,
+      description: 'Security group ID for ECS tasks (used by run-task and the migrator)'
+    })
   }
 }
