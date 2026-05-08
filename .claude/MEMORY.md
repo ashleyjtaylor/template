@@ -1,2 +1,3 @@
 - [Project overview](memory/project_overview.md) — bootstrappable monorepo template for shipping new SaaS products: stack, architecture, and load-bearing design decisions
 - [Progress](memory/progress.md) — what has actually shipped, in reverse chronological order. Read alongside the overview: overview = design, progress = status
+- [Never commit to main](memory/never_commit_to_main.md) — always `git checkout -b <branch>` before any commit, especially right after a merge when muscle memory says "I'm working"
