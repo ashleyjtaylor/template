@@ -50,3 +50,7 @@ Before writing a single line of code, interview me about this feature. Work thro
 - How will the Dockerfile need to work?
 
 Once we've answered everything, summarise the full plan — data model, routes, types, infrastructure, error codes, and test cases — before I start implementing.
+
+**After the user signs off on the plan**, save the exact plan summary to `docs/tickets/NN-<kebab-slug>.md` where `NN` is the next zero-padded sequential number (look at existing files in `docs/tickets/` to find the next one) and the slug is a short feature name (e.g. `03-database-setup.md`). The file is the durable record of what was agreed before code was written; future sessions can read it to understand intent independent of what eventually shipped.
+
+**Ship the ticket with the implementation PR, not as a separate docs PR.** Create the ticket file as the first commit on the feature branch, then build the feature in subsequent commits on the same branch. Reviewers see plan + implementation together, no extra PR cycle, no risk of the ticket landing on `main` for a feature that never ships. The only exception is genuinely retroactive backfills (plans agreed before this convention existed) — those can land in their own docs PR.
