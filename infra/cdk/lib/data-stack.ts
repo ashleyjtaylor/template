@@ -18,18 +18,22 @@ export class DataStack extends Stack {
       imageScanOnPush: true,
       removalPolicy: RemovalPolicy.DESTROY,
       emptyOnDelete: true,
+      // ECR allows only one rule per storage class (tagged / untagged).
+      // We keep the last 30 tagged deploy artifacts and expire any untagged
+      // stragglers (manual interventions, scanner re-pushes) within a day.
       lifecycleRules: [
         {
           rulePriority: 1,
-          description: 'Expire untagged images after 14 days',
-          tagStatus: TagStatus.UNTAGGED,
-          maxImageAge: Duration.days(14)
+          description: 'Keep only the last 30 tagged images',
+          tagStatus: TagStatus.TAGGED,
+          tagPatternList: ['*'],
+          maxImageCount: 30
         },
         {
           rulePriority: 2,
-          description: 'Keep only the last 30 untagged images',
+          description: 'Expire untagged images after 1 day',
           tagStatus: TagStatus.UNTAGGED,
-          maxImageCount: 30
+          maxImageAge: Duration.days(1)
         }
       ]
     })
