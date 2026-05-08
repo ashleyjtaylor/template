@@ -78,10 +78,12 @@ export class DataStack extends Stack {
     })
 
     this.database = new DatabaseInstance(this, 'Postgres', {
-      // Pin major to match Compose + CI; RDS picks the latest minor.
-      // Bump the major string here when AWS adds a newer Postgres major.
+      // Latest Postgres minor that RDS exposes in eu-west-1. RDS lags
+      // upstream by months; check `aws rds describe-db-engine-versions
+      // --engine postgres` and bump the constant when a newer minor is
+      // available. Compose at the repo root tracks the same major.
       engine: DatabaseInstanceEngine.postgres({
-        version: PostgresEngineVersion.of('18.0', '18')
+        version: PostgresEngineVersion.VER_18_3
       }),
       instanceType: InstanceType.of(InstanceClass.T4G, InstanceSize.MICRO),
       vpc,
