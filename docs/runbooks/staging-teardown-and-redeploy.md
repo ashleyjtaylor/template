@@ -34,6 +34,8 @@ git commit --allow-empty -m "chore: redeploy staging"
 git push
 ```
 
+> **Note (current dev state):** while the template is still being scaffolded and staging gets torn down between dev sessions, the deploy DAG is gated on `workflow_dispatch` instead of `push`. Trigger from the **Actions** tab → **ci** → **Run workflow** (branch `main`), or `gh workflow run ci.yml --ref main`. Revert the `if:` conditions on the deploy jobs back to `github.event_name == 'push' && github.ref == 'refs/heads/main'` once you want continuous deploy.
+
 The first re-deploy after tear-down takes ~5 minutes:
 - ~1 min: `deploy-infra` (NAT gateway is the slowest single resource at ~2 min on creation).
 - ~1 min: `build-image` (uncached pnpm install in Docker).

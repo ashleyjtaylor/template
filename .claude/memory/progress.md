@@ -28,7 +28,7 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
   - **pnpm bumped 10.33.4 → 11.0.8** across all pinned locations. `pnpm-workspace.yaml` opts into `injectWorkspacePackages: true` (proper way to make `pnpm deploy` work in Docker without `--legacy`), and uses pnpm 11's new `allowBuilds: { esbuild, lefthook }` (which replaces the deprecated `onlyBuiltDependencies`).
   - `docs/system-design.md`: first version, with Mermaid diagrams for AWS infra topology, request path, and deploy flow.
 - **What's now possible**:
-  - Push to `main` → ~5 min later, `http://<alb-dns>/health` returns `200 { status: "ok", version: <sha>, uptime: <seconds> }`. The alb DNS is exposed as a CFN output on `template-staging-app` and the smoke step asserts the deploy reached the running task.
+  - Push to `main` → ~5 min later, `http://<alb-dns>/health` returns `200 { status: "ok", version: <sha>, uptime: <seconds> }`. The ALB DNS is exposed as a CFN output on `template-staging-app` and the smoke step asserts the deploy reached the running task. _(Note: while the template is being scaffolded, deploys are gated on `workflow_dispatch` rather than push — see `docs/runbooks/staging-teardown-and-redeploy.md`.)_
   - `cdk destroy "template-staging-*"` tears the whole staging environment down cleanly (ECR images auto-deleted, log groups go away, no stuck CFN exports).
   - The four-job deploy DAG is the right shape for promote-by-image: when a future `deploy-production.yml` lands, it consumes a tag built by `build-image` rather than re-building.
 - **Deferred** (explicit follow-up surface):
