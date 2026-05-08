@@ -1,1 +1,2 @@
 - [Project overview](memory/project_overview.md) — bootstrappable monorepo template for shipping new SaaS products: stack, architecture, and load-bearing design decisions
+- [Progress](memory/progress.md) — what has actually shipped, in reverse chronological order. Read alongside the overview: overview = design, progress = status
