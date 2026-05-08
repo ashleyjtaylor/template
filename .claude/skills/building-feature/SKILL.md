@@ -11,6 +11,8 @@ description: When building and on completion of a feature, ensure it follows and
 - Implement both local and production paths in the same change (e.g. local file upload AND pre-signed S3 upload). Don't ship a feature that only works locally.
 - Update GitHub Actions workflows if the feature touches CI/CD or environment variables.
 - Run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` after every meaningful change.
+- If the feature ships or modifies a Dockerfile, run `docker build` and `docker run` against it locally. The standard `pnpm` checks don't exercise the image — Dockerfile bugs only surface in `docker build` output.
+- Prefer the proper config over a workaround flag or lint suppression. If you reach for `--legacy`, `--ignore-scripts`, `// eslint-disable`, `biome-ignore`, or any flag named "legacy" / "force" / "skip", first check whether the tool has a canonical opt-in for the underlying behaviour. Workarounds accumulate as silent debt; proper config is auditable and self-documenting.
 
 **Test**
 - Unit tests for service-layer logic. Integration tests through tRPC for every endpoint, covering the happy path and each error class. E2E for golden paths only.
