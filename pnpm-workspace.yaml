@@ -3,6 +3,14 @@ packages:
   - 'packages/*'
   - 'infra/*'
 
-onlyBuiltDependencies:
-  - esbuild
-  - lefthook
+# Allow these packages' postinstall scripts to run (pnpm 11 replaced
+# `onlyBuiltDependencies` with `allowBuilds`). esbuild downloads its native
+# binary; lefthook installs git hooks.
+allowBuilds:
+  esbuild: true
+  lefthook: true
+
+# Copy workspace packages into consumers' node_modules instead of symlinking.
+# Required for `pnpm deploy` to produce a self-contained directory in the Docker
+# build (otherwise it errors with ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE in v10+).
+injectWorkspacePackages: true

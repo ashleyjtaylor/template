@@ -12,6 +12,35 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-08 — `apps/api` with `/health`, deployed to staging end-to-end
+
+- **Branch / PR**: `feat/api-health` (this PR)
+- **What landed**:
+  - `apps/api` workspace (`@template/api`): Hono 4.12.18 + `@hono/node-server` 2.0.1 + Zod 4.4.3 on Node 24.15.0. Single route `GET /health` returns `{ status, version, uptime }` where `version` is the running container's `GIT_SHA` and `uptime` is seconds since the app started. Code is structured as a `createApp({ gitSha })` factory + a `src/env.ts` Zod schema that parses `process.env` once at boot — no `process.env.X` access in handlers, no `biome-ignore` for the index-signature lint. Two Vitest tests (factory-based, no env stubbing). Build via `tsc -p tsconfig.build.json`; tests excluded from the build output.
+  - `apps/api/Dockerfile`: multi-stage (`base`/`deps`/`build`/runner) on `node:24.15.0-bookworm-slim` (chosen over alpine for glibc compatibility with native npm prebuilds, no musl DNS/threading edge cases). pnpm installed via `npm i -g`, no Corepack. `pnpm deploy --prod --ignore-scripts` produces a clean production directory copied into the runner. Runs as `USER node`. Build context is repo root; `.dockerignore` at root prunes `node_modules`, `.git`, `dist`, `cdk.out`, `.turbo`, `docs`, `*.md`.
+  - **CDK stacks fully populated** (`template-staging-{network,data,app}`, all with `terminationProtection: false`):
+    - `NetworkStack`: VPC `10.0.0.0/16`, 2 AZs, public + private subnets, **single NAT gateway**, `albSg` (`:80` from internet), `ecsSg` (`:3000` from `albSg` only). `APP_PORT = 3000` exported as the cross-file constant.
+    - `DataStack`: ECR repo `template-staging-api` with `imageScanOnPush`, lifecycle rules (expire untagged > 14 days, keep last 30 untagged), `removalPolicy: DESTROY`, `autoDeleteImages: true`, `emptyOnDelete: true`.
+    - `AppStack`: Fargate cluster, task def 0.25 vCPU / 0.5 GB, container from ECR `:imageTag` (CDK context), `circuitBreaker: { rollback: true }`, `minHealthyPercent: 0`, ECS container health check via `node -e fetch`. Service in private subnets, no public IP. Public ALB listener on `:80` with target group health check `GET /health`. CloudWatch log group `/ecs/template-staging-api` 30d retention `DESTROY`. `AlbDnsName` `CfnOutput`.
+  - **Promote-by-image-friendly CI/CD DAG** in `.github/workflows/ci.yml`: `[ci, cdk] → deploy-infra → build-image → deploy-app → smoke`. ECR login via `aws-actions/amazon-ecr-login@v2.1.5`. Image tag = `github.sha`. Smoke step polls `/health` for up to 5 minutes and asserts `version` matches the pushed SHA — catches "deploy succeeded but rolling update did not actually swap the image". Added a `docker-build` job that runs on PRs only (catches Dockerfile breakage before merge; on `main` the existing `build-image` job covers it).
+  - `infra/cdk/tsconfig.json`: relaxed `exactOptionalPropertyTypes: false` for the CDK package only (CDK's interface types declare optional fields without `| undefined` and trip the strict check; this is a documented CDK incompatibility).
+  - **pnpm bumped 10.33.4 → 11.0.8** across all pinned locations. `pnpm-workspace.yaml` opts into `injectWorkspacePackages: true` (proper way to make `pnpm deploy` work in Docker without `--legacy`), and uses pnpm 11's new `allowBuilds: { esbuild, lefthook }` (which replaces the deprecated `onlyBuiltDependencies`).
+  - `docs/system-design.md`: first version, with Mermaid diagrams for AWS infra topology, request path, and deploy flow.
+- **What's now possible**:
+  - Push to `main` → ~5 min later, `http://<alb-dns>/health` returns `200 { status: "ok", version: <sha>, uptime: <seconds> }`. The alb DNS is exposed as a CFN output on `template-staging-app` and the smoke step asserts the deploy reached the running task.
+  - `cdk destroy "template-staging-*"` tears the whole staging environment down cleanly (ECR images auto-deleted, log groups go away, no stuck CFN exports).
+  - The four-job deploy DAG is the right shape for promote-by-image: when a future `deploy-production.yml` lands, it consumes a tag built by `build-image` rather than re-building.
+- **Deferred** (explicit follow-up surface):
+  - **Cross-file version drift**: Node `24.15.0` and pnpm `11.0.8` are duplicated in root `package.json`, `.github/workflows/ci.yml` (5 jobs), `apps/api/Dockerfile`, and `README.md`. Renovate currently does not group these. Add `customManagers` regex rules so a Node bump updates every location in one PR.
+  - **HTTPS / TLS / DNS**: ALB serves `:80` only. Route53, ACM, CloudFront, custom domain all deferred until a real domain exists for this template.
+  - **Data layer**: no RDS, Redis, S3 (uploads), Secrets Manager. Add when first feature requires them; will need NAT (already in place) plus security group additions.
+  - **`apps/worker`, `apps/web`, `apps/internal`**: not scaffolded. Scaffold the next time a feature needs background work or a frontend.
+  - **`packages/*`**: nothing yet. `packages/errors`, `packages/types`, `packages/schemas`, `packages/db`, `packages/auth`, etc. — created on first need.
+  - **`deploy-production.yml`**: tag-triggered, environment-protected. Will retag the existing staging-tested ECR image rather than re-build (promote-by-image).
+  - **Tighten OIDC role**: still `AdministratorAccess`. Runbook at `docs/runbooks/github-oidc-setup.md` has the plan; surface is now known (CDK exec roles + ECR push + ECS update-service + CFN describe-stacks).
+  - **Production env sizing**: prod stacks compile with the same sizing as staging. Parameterise via `config.ts` when `deploy-production` lands.
+  - **Path-ignore on `deploy-staging` for doc-only changes**: discussed and deferred. Would skip ECS rolling updates on doc-only merges. Worth doing once doc PR frequency justifies it.
+
 ## 2026-05-07 — `building-feature` skill: self-review step
 
 - **Commits**: `c3f4cdf`

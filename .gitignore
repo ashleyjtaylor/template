@@ -8,6 +8,7 @@ out
 .next
 .turbo
 cdk.out
+infra/cdk/cdk.context.json
 
 # Test artifacts
 coverage

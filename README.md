@@ -6,7 +6,7 @@ A bootstrap template for shipping new SaaS products. Forked per product.
 
 ```bash
 nvm use                              # picks up Node 24.15.0 from .nvmrc
-npm install -g pnpm@10.33.4          # if pnpm is not already installed
+npm install -g pnpm@11.0.8           # if pnpm is not already installed
 pnpm install
 ```
 
@@ -27,7 +27,7 @@ pnpm install
 | Tool | Version |
 | --- | --- |
 | Node.js | 24.15.0 (LTS Krypton) |
-| pnpm | 10.33.4 |
+| pnpm | 11.0.8 |
 | TypeScript | 6.0.3 |
 | Biome | 2.4.14 |
 | Turbo | 2.9.9 |

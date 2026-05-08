@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+.vscode
+.idea
+node_modules
+**/node_modules
+**/.turbo
+**/dist
+**/cdk.out
+docs
+*.md
+.env
+.env.*
+*.log
