@@ -16,6 +16,7 @@ const password = encodeURIComponent(envVar('DB_PASSWORD', 'postgres'))
 const host = envVar('DB_HOST', 'localhost')
 const port = envVar('DB_PORT', '5432')
 const database = envVar('DB_NAME', 'template_dev')
+
 const url = `postgresql://${user}:${password}@${host}:${port}/${database}`
 
 export default defineConfig({

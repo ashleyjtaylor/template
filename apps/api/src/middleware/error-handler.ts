@@ -23,10 +23,14 @@ export const errorHandler: ErrorHandler = (err, c) => {
     // literals (400, 401, ...), so this is safe at runtime.
     return c.json(formatError(err), err.status as ContentfulStatusCode)
   }
+
   if (err instanceof HTTPException) {
     const code = STATUS_TO_CODE[err.status] ?? 'InternalError'
+
     return c.json({ code, message: err.message }, err.status as ContentfulStatusCode)
   }
+
   logger.error({ err }, 'unhandled error')
+
   return c.json({ code: 'InternalError', message: 'Internal server error' }, 500)
 }

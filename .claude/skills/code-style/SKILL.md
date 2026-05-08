@@ -7,6 +7,18 @@ Apply these rules to the code in scope. Fix violations. Do not change behaviour.
 
 **Formatting is automatic.** Biome is the source of truth (single quotes, no trailing commas, semicolons as-needed). Don't argue with it; don't override per-file. Run `pnpm format` if a file looks off.
 
+**File organization**
+
+Every TypeScript file is laid out top-down in this order:
+
+1. Imports (Biome auto-sorts: `node:*` → external → internal/relative)
+2. Top-level constants
+3. Types and interfaces
+4. Module-private helpers
+5. Main exports
+
+Don't scatter constants between functions or place imports after code. The structure makes "what does this module own" answerable at a glance.
+
 **Comments**
 
 Write no comments by default. Add one only when the WHY is non-obvious: a hidden constraint, a workaround for a specific bug, a subtle invariant. If removing the comment would not confuse a future reader, delete it.
@@ -15,6 +27,8 @@ Never write:
 - Comments that restate what the code does (`// create user`)
 - Reference comments that describe the caller or task (`// used by signup flow`, `// added for issue #42`)
 - Multi-line docstrings or block comments on internal functions
+
+**Cross-file invariants** are an exception — they *are* the WHY. When two files must stay in sync (e.g. `SHUTDOWN_TIMEOUT_MS` in `apps/api/src/env.ts` must stay below the ECS `stopTimeout` in `infra/cdk/lib/app-stack.ts`; URL-composition logic duplicated between `env.ts` and `prisma.config.ts`), put a comment in **each** file naming the other. The next person editing one of them sees the link.
 
 **Types**
 
@@ -39,6 +53,29 @@ Prefer `unknown` over `any`. If you reach for `any`, narrow it at the boundary i
 
 Avoid `as` type assertions except at validated boundaries (after a Zod parse, after `instanceof`). Inline assertions hide bugs.
 
+**`||` vs `??`**
+
+Pick deliberately — they differ on `0`, `''`, and `false`:
+
+- **`||`** treats every falsy value (`null`, `undefined`, `0`, `''`, `false`, `NaN`) as "missing" and falls through to the right-hand side.
+- **`??`** only catches `null` and `undefined`. `0`, `''`, and `false` pass through.
+
+Use `||` when those falsy values should mean "missing" — e.g. `process.env.GIT_SHA || 'unknown'` (Docker `ENV X=` results in an empty string, which we want to treat as unset).
+
+Use `??` only when `0` / `''` / `false` are legitimate values — e.g. `count ?? 10` where `0` is a real count.
+
+The wrong choice produces silent data corruption. Picking `??` for env vars lets `''` through as a "real" value, which then leaks into logs and responses.
+
+**Constants over magic literals**
+
+Extract a numeric or string literal as a named const when:
+
+- It appears in 2+ places (e.g. `APP_PORT = 3000` referenced from middleware, CDK, and the Dockerfile).
+- Its meaning isn't obvious from context (e.g. `PROBE_TIMEOUT_MS = 2_000` reads better than a bare `2_000` inside `Promise.race`).
+- It's a configuration knob someone might want to tune.
+
+Single-use literals with self-evident meaning (`return c.json(body, 200)`, `throw new Error('boom')`) stay inline.
+
 **Error handling**
 
 Use typed error classes from `packages/errors`, not plain `Error` or generic HTTP exceptions:
@@ -60,24 +97,46 @@ Only validate and handle errors at system boundaries (user input, external APIs)
 
 **Whitespace within functions**
 
-Separate the *arrange*, *act*, and *assert* phases of a function with a blank line. Most visible in tests, but the same reading-flow rule applies to handlers, factories, and any code that does setup → operation → result:
+Use blank lines to separate logical phases. Specific rules:
+
+- **`if` / `for` / `while` / `switch`** — blank line above and below. Exceptions: skip the blank above if it's the function's first statement; skip the blank below if no further code follows the closing brace.
+- **`const` / `let` declarations** — blank line below, unless the next statement is also a `const` / `let`. Group related declarations together, then break before the next phase.
+- **`return`** — blank line above, unless `return` is the only line in the function body.
+- **General principle** — most statements get breathing room above and below; only group when statements logically belong together (sequence of related variable declarations, tight chain of method calls being constructed, etc.).
+
+Example (handler):
 
 ```ts
-// good — eyes can find each phase
-it('should return 404 when the user is missing', async () => {
-  const app = createApp({ gitSha: 'test' })
+export const handler: Handler = async (c) => {
+  const body = await c.req.json()
+  const validated = schema.parse(body)
 
-  const res = await app.request('/users/missing')
+  if (await exists(validated.email)) {
+    throw new ConflictError('Email already in use')
+  }
 
-  expect(res.status).toBe(404)
-})
+  const user = await createUser(validated)
+
+  return c.json(user, 201)
+}
 ```
 
-Don't insert blank lines between every variable declaration — group related setup, then break before the operation, then break before the assertions.
+Tests follow the same shape (arrange / act / assert each separated by a blank line).
 
 **Authz**
 
 No inline role checks. Every authorisation decision goes through `assertCan(membership, 'resource:verb')` from `packages/auth`. Action strings follow `resource:verb` convention (e.g. `'members:invite'`, `'org:manage'`).
+
+**Logger calls**
+
+`pino` takes structured fields in the first arg, a human-readable message in the second:
+
+```ts
+logger.info({ method, path, status, durationMs }, 'request')
+logger.warn({ err, timeoutMs }, 'health/ready: db probe timed out')
+```
+
+CloudWatch Logs Insights queries the first-arg fields directly (`{ $.requestId = "abc" }`); the message is for humans skimming logs. Putting fields *inside* the message string (`logger.info(\`request \${path} \${status}\`)`) makes them ungreppable.
 
 **What not to add**
 

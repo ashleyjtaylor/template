@@ -121,6 +121,7 @@ export class DataStack extends Stack {
     // it's always present — narrow once here so the secret-mapping below is
     // typed without per-line assertions.
     const dbSecret = this.database.secret
+
     if (!dbSecret) {
       throw new Error(
         'RDS instance has no secret; Credentials.fromGeneratedSecret should have created one'

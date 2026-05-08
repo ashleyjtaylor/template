@@ -33,25 +33,31 @@ export function registerShutdown(
 
   const shutdown = (signal: NodeJS.Signals) => {
     if (shuttingDown) return
+
     shuttingDown = true
 
     logger.info({ signal, timeoutMs }, 'shutdown: draining in-flight requests')
 
     const force = setTimeout(() => {
       logger.warn({ timeoutMs }, 'shutdown: drain timed out, exiting')
+
       process.exit(0)
     }, timeoutMs)
+
     force.unref()
 
     server.close(async (err) => {
       if (err) {
         clearTimeout(force)
         logger.error({ err }, 'shutdown: server.close errored, exiting non-zero')
+
         process.exit(1)
       }
+
       await runBeforeExit()
       clearTimeout(force)
       logger.info('shutdown: drain complete')
+
       process.exit(0)
     })
   }

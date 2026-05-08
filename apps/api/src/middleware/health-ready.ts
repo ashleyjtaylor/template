@@ -16,12 +16,14 @@ export const healthReady: Handler = async (c) => {
 
     if (result === 'timeout') {
       logger.warn({ timeoutMs: PROBE_TIMEOUT_MS }, 'health/ready: db probe timed out')
+
       return c.json({ status: 'unavailable', checks: { db: 'down' } }, 503)
     }
 
     return c.json({ status: 'ok', checks: { db: 'ok' } }, 200)
   } catch (err) {
     logger.warn({ err }, 'health/ready: db probe failed')
+
     return c.json({ status: 'unavailable', checks: { db: 'down' } }, 503)
   }
 }

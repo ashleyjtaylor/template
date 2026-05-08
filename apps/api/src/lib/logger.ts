@@ -22,6 +22,7 @@ const baseOptions = {
   serializers: { err: stdSerializers.err },
   mixin: () => {
     const requestId = getRequestId()
+
     return requestId ? { requestId } : {}
   }
 } satisfies Parameters<typeof pino>[0]
