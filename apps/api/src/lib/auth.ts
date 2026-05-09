@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { env } from '@/env.js'
 import { prisma } from '@/lib/db.js'
+import { getRequestId } from '@/lib/logger.js'
 
 const entityId = (prefix: string) => () => `${prefix}${crypto.randomUUID()}`
 
@@ -15,6 +16,16 @@ const sharedEntityIdField = (prefix: string) => ({
   input: false,
   defaultValue: entityId(prefix)
 })
+
+// Captures the X-Request-Id of the HTTP request that created the row, read
+// from the AsyncLocalStorage context seeded by middleware/request-id.ts.
+// Out-of-request inserts (seed scripts, future jobs) leave it null.
+const sharedRequestIdField = {
+  type: 'string' as const,
+  required: false,
+  input: false,
+  defaultValue: () => getRequestId() ?? null
+}
 
 // better-auth's user.create.before hook param doesn't carry our additionalFields
 // in its type. Narrow once at the call site instead of bracket-accessing.
@@ -33,22 +44,26 @@ export const auth = betterAuth({
     additionalFields: {
       firstname: { type: 'string', required: true, input: true },
       lastname: { type: 'string', required: true, input: true },
-      entityId: sharedEntityIdField('usr_')
+      entityId: sharedEntityIdField('usr_'),
+      requestId: sharedRequestIdField
     }
   },
   session: {
     additionalFields: {
-      entityId: sharedEntityIdField('sess_')
+      entityId: sharedEntityIdField('sess_'),
+      requestId: sharedRequestIdField
     }
   },
   account: {
     additionalFields: {
-      entityId: sharedEntityIdField('acct_')
+      entityId: sharedEntityIdField('acct_'),
+      requestId: sharedRequestIdField
     }
   },
   verification: {
     additionalFields: {
-      entityId: sharedEntityIdField('veri_')
+      entityId: sharedEntityIdField('veri_'),
+      requestId: sharedRequestIdField
     }
   },
   // better-auth's signup body still requires `name`. The hook composes it from
