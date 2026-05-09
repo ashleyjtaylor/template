@@ -9,7 +9,8 @@ export default defineConfig({
       // (template_test database) or, in CI, against the postgres service
       // container. Other DB_* vars use the env.ts defaults
       // (localhost:5432, postgres/postgres) which match Compose.
-      DB_NAME: 'template_test'
+      DB_NAME: 'template_test',
+      BETTER_AUTH_SECRET: 'test-secret-32-chars-minimum-aaaa'
     }
   }
 })
