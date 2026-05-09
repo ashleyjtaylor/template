@@ -1,8 +1,8 @@
 import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { formatError, HttpError } from '../lib/errors.js'
-import { logger } from '../lib/logger.js'
+import { formatError, HttpError } from '@/lib/errors.js'
+import { logger } from '@/lib/logger.js'
 
 // Maps a non-typed framework error (HTTPException from middleware like
 // bodyLimit or cors) to one of the canonical wire codes used by our HttpError

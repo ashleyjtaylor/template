@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { MiddlewareHandler } from 'hono'
-import { runWithContext } from '../lib/logger.js'
+import { runWithContext } from '@/lib/logger.js'
 
 export function requestId(): MiddlewareHandler {
   return async (c, next) => {

@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono'
-import { logger } from '../lib/logger.js'
+import { logger } from '@/lib/logger.js'
 
 // Paths that should not generate one log line per request. ALB hits /health
 // every 30s and monitoring polls /health/ready on a similar cadence; logging

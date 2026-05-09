@@ -2,8 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*", "prisma.config.ts"],
+  "include": ["src/**/*", "test/**/*", "prisma.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

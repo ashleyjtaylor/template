@@ -33,7 +33,13 @@ const schema = z
     // Signs better-auth session cookies. No default — production injects via
     // Secrets Manager (infra/cdk/lib/data-stack.ts), CI via vitest.config.ts,
     // local dev via apps/api/.env (see apps/api/.env.example).
-    BETTER_AUTH_SECRET: z.string().min(32)
+    BETTER_AUTH_SECRET: z.string().min(32),
+    // Canonical base URL better-auth uses to construct OAuth callbacks,
+    // verification email links, password-reset URLs, and session-cookie
+    // domains. Defaults to localhost so `pnpm dev` doesn't trip better-auth's
+    // "Base URL could not be determined" warning. Production injects the
+    // ALB DNS (eventually the real api.<domain>) via infra/cdk/lib/app-stack.ts.
+    BETTER_AUTH_URL: z.string().url().default('http://localhost:3000')
   })
   // URL composition is duplicated in apps/api/prisma.config.ts (the Prisma
   // CLI's config file, which can't import from src/). Keep the two in sync
