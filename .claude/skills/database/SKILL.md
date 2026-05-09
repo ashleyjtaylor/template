@@ -58,6 +58,27 @@ If a future vendor library forces another camelCase island, document the deviati
 - Foreign keys to a parent that doesn't own the child use the default `Restrict` — let the DB block deletion until the caller explicitly handles it. No `onDelete: SetNull` unless there's a documented reason in the schema.
 - Index every foreign key column. Prisma adds an index automatically when you declare the relation; verify the migration created it.
 
+## Row → request correlation
+
+Every writable table we own carries:
+
+```prisma
+requestId String?
+@@index([requestId])
+```
+
+The column captures the `req_<uuid>` of the HTTP request that created the row. Inside any request handler the value comes from the `AsyncLocalStorage` context seeded by `apps/api/src/middleware/request-id.ts` — read via `getRequestId()` from `@/lib/logger.js`.
+
+**Nullable + non-unique + indexed.** Out-of-request inserts (seed scripts, future BullMQ jobs, manual SQL) leave it `NULL`; one HTTP request typically writes multiple rows so uniqueness would be wrong; lookups are sparse enough that the index pays off.
+
+**Set on `create` only.** Never overwrite on subsequent updates — the original creation request is the audit value.
+
+**For better-auth-managed tables** (User, Session, Account, Verification): wire via `additionalFields.requestId.defaultValue: () => getRequestId() ?? null`. Better-auth's Prisma adapter strips fields not declared via `additionalFields` — see the `auth` skill for the full pattern.
+
+**For our own future tables**: declare the column on the model and populate at the call site (or via a Prisma client extension once we have several). When we have a third call site, factor into `packages/db`.
+
+**For full request meta-data** (headers, body hash, ipAddress, userAgent, etc.) on security-sensitive mutations: that lives in a future `audit_log` table, not on every row. `requestId` here is the lightweight correlation key; `audit_log` is the heavyweight event store.
+
 ## Soft delete
 
 Not implemented yet. When the first delete-user feature lands, add `deletedAt DateTime?` to the relevant tables and route reads through a repository helper that filters `deletedAt: null` by default. Until then: `delete()` is a hard delete.

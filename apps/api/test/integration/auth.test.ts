@@ -45,11 +45,20 @@ describe('POST /auth/sign-up/email', () => {
     expect(res.status).toBe(200)
     expect(cookieFrom(res)).toContain('better-auth.session_token=')
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    const requestId = res.headers.get('x-request-id')
+    expect(requestId).toMatch(/^req_[0-9a-f-]{36}$/)
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { sessions: true, accounts: true }
+    })
     expect(user).not.toBeNull()
     expect(user?.entityId).toMatch(/^usr_[0-9a-f-]{36}$/)
     expect(user?.firstname).toBe('Test')
     expect(user?.lastname).toBe('User')
+    expect(user?.requestId).toBe(requestId)
+    expect(user?.sessions[0]?.requestId).toBe(requestId)
+    expect(user?.accounts[0]?.requestId).toBe(requestId)
   })
 
   it('should return 422 when the email is already registered', async () => {
