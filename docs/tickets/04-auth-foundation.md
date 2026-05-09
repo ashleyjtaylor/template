@@ -6,13 +6,13 @@ To be shipped via `feat/api-auth`.
 ## Requirements
 - Wire **better-auth** into Hono, mounted at `/auth/*` (its default), email + password only, DB-backed sessions (no Redis), cookie-based session (`Secure`, `HttpOnly`, `SameSite=Lax`).
 - **No `/me` route** in this PR — better-auth's `/auth/get-session` covers the use case. **No `requireAuth` middleware** and **no `getCurrentUser` helper** either; both arrive with the first protected route in a future PR (rule: no helpers under three call sites).
-- **"Done" bar** — from a terminal:
-  1. POST `/auth/sign-up/email` with `{ email, password, firstname, lastname }` → 200, user row in DB, cookie returned.
+- **"Done" bar** — from a terminal (status codes reflect better-auth's actual responses, which differ from initial assumptions in a few places):
+  1. POST `/auth/sign-up/email` with `{ email, password, name, firstname, lastname }` → 200, user row in DB, cookie returned. (`name` is required by better-auth's signup body; the hook composes one from firstname+lastname when missing as a safety net.)
   2. POST `/auth/sign-in/email` with `{ email, password }` → 200, cookie returned.
   3. GET `/auth/get-session` with cookie → 200, `{ user, session }`.
   4. GET `/auth/get-session` without cookie → 200, `null` (better-auth's deliberate convention).
-  5. POST `/auth/sign-out` with cookie → 204, session row deleted.
-  6. Re-signup same email → 409.
+  5. POST `/auth/sign-out` with cookie → 200, session row deleted. Requires `Origin` header to satisfy better-auth's CSRF check.
+  6. Re-signup same email → 422 (not 409 — better-auth groups it under `UNPROCESSABLE_ENTITY` for `FAILED_TO_CREATE_USER`).
   7. Sign-in with wrong password → 401.
 
 ## Data model
@@ -24,7 +24,7 @@ Four new Prisma models from better-auth's standard schema, customised:
 - **`Account`** (table `account`): standard fields + `entityId` (`acct_<uuid>`, unique, indexed). Holds the password hash (better-auth uses scrypt, JS-native).
 - **`Verification`** (table `verification`): standard fields + `entityId` (`veri_<uuid>`, unique, indexed). Created but unused until email verification / magic link / password reset land.
 
-**ID generation**: `crypto.randomUUID()` (Node native, no dep) for the `entityId` column, prefixed per table. Implemented via `databaseHooks.<model>.create.before` for each of the four models. Same generator as `req_<uuid>` already in production.
+**ID generation**: `crypto.randomUUID()` (Node native, no dep) for the `entityId` column, prefixed per table. Implemented via better-auth's `additionalFields.entityId.defaultValue` on each of the four models — the field must be declared in better-auth's schema, otherwise the Prisma adapter strips it before insert. Same generator as `req_<uuid>` already in production.
 
 **Soft-delete**: deferred. Adds when the first delete-user feature lands.
 
@@ -71,13 +71,13 @@ Four new Prisma models from better-auth's standard schema, customised:
 ## Testing
 8 integration tests in `apps/api/src/auth.integration.test.ts`:
 1. Signup happy path → 200, cookie set, user row exists with `entityId` matching `^usr_[0-9a-f-]{36}$`.
-2. Signup duplicate email → 409.
+2. Signup duplicate email → 422.
 3. Signup weak password (<8 chars) → 400.
 4. Signin happy path → 200, cookie set.
 5. Signin wrong password → 401.
 6. Get-session with cookie → 200 with `{ user, session }`.
 7. Get-session without cookie → 200 with `null`.
-8. Sign-out with cookie → 204, then get-session returns `null`.
+8. Sign-out with cookie + `Origin` header → 200, then get-session returns `null`.
 
 **Isolation**: unique email per test (`${test-name}-${randomUUID()}@example.com`). No DB cleanup. Transaction-rollback fixture deferred until the first write-side test that needs strict isolation.
 
