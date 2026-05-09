@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc",
     "test": "vitest run",
+    "studio": "prisma studio",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -48,20 +48,20 @@ describe('POST /auth/sign-up/email', () => {
     const requestId = res.headers.get('x-request-id')
     expect(requestId).toMatch(/^req_[0-9a-f-]{36}$/)
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findUniqueOrThrow({
       where: { email },
       include: { sessions: true, accounts: true }
     })
-    expect(user).not.toBeNull()
-    expect(user?.entityId).toMatch(/^usr_[0-9a-f-]{36}$/)
-    expect(user?.firstname).toBe('Test')
-    expect(user?.lastname).toBe('User')
-    expect(user?.requestId).toBe(requestId)
-    expect(user?.sessions[0]?.requestId).toBe(requestId)
-    expect(user?.accounts[0]?.requestId).toBe(requestId)
+
+    expect(user.entityId).toMatch(/^usr_[0-9a-f-]{36}$/)
+    expect(user.firstname).toBe('Test')
+    expect(user.lastname).toBe('User')
+    expect(user.requestId).toBe(requestId)
+    expect(user.sessions[0]?.requestId).toBe(requestId)
+    expect(user.accounts[0]?.requestId).toBe(requestId)
 
     const audits = await prisma.auditLog.findMany({
-      where: { actorUserId: user?.entityId },
+      where: { actorUserId: user.entityId },
       orderBy: { createdAt: 'asc' }
     })
 
@@ -114,9 +114,9 @@ describe('POST /auth/sign-in/email', () => {
     expect(cookieFrom(res)).toContain('better-auth.session_token=')
 
     const requestId = res.headers.get('x-request-id')
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } })
     const loginAudits = await prisma.auditLog.findMany({
-      where: { actorUserId: user?.entityId, action: 'user.logged_in' },
+      where: { actorUserId: user.entityId, action: 'user.logged_in' },
       orderBy: { createdAt: 'asc' }
     })
 
@@ -182,9 +182,9 @@ describe('POST /auth/sign-out', () => {
     expect(after.status).toBe(200)
     expect(await after.json()).toBeNull()
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } })
     const audits = await prisma.auditLog.findMany({
-      where: { actorUserId: user?.entityId },
+      where: { actorUserId: user.entityId },
       orderBy: { createdAt: 'asc' }
     })
 
