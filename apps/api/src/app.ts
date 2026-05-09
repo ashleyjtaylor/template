@@ -8,6 +8,7 @@ import { errorHandler } from '@/middleware/error-handler.js'
 import { healthReady } from '@/middleware/health-ready.js'
 import { requestId } from '@/middleware/request-id.js'
 import { requestLogger } from '@/middleware/request-logger.js'
+import { auditLogRoutes } from '@/routes/audit-log.js'
 
 export interface AppOptions {
   gitSha: string
@@ -40,6 +41,8 @@ export function createApp({
   app.get('/health/ready', healthReady)
 
   app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw))
+
+  app.route('/api/audit-log', auditLogRoutes)
 
   app.onError(errorHandler)
 
