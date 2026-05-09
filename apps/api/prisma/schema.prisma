@@ -15,6 +15,7 @@ datasource db {
 model User {
   id            String   @id
   entityId      String   @unique
+  requestId     String?
   firstname     String
   lastname      String
   name          String?
@@ -27,12 +28,14 @@ model User {
   sessions Session[]
   accounts Account[]
 
+  @@index([requestId])
   @@map("user")
 }
 
 model Session {
   id        String   @id
   entityId  String   @unique
+  requestId String?
   expiresAt DateTime
   token     String   @unique
   ipAddress String?
@@ -43,12 +46,14 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([requestId])
   @@map("session")
 }
 
 model Account {
   id                    String    @id
   entityId              String    @unique
+  requestId             String?
   accountId             String
   providerId            String
   userId                String
@@ -64,17 +69,20 @@ model Account {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([requestId])
   @@map("account")
 }
 
 model Verification {
   id         String   @id
   entityId   String   @unique
+  requestId  String?
   identifier String
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@index([requestId])
   @@map("verification")
 }
