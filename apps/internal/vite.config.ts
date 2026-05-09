@@ -21,6 +21,17 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5173
+    port: 5173,
+    // Forward /api/* to the local API at :3000 so the SPA's API client can
+    // use relative paths (`fetch('/api/audit-log')`) — same shape as
+    // production where CloudFront routes `/api/*` to the ALB origin.
+    // `changeOrigin: true` rewrites the Host header so the API sees its own
+    // host, not localhost:5173.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
   }
 })
