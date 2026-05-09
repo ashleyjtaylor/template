@@ -23,6 +23,7 @@ import {
   PostgresEngineVersion,
   StorageType
 } from 'aws-cdk-lib/aws-rds'
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager'
 import type { Construct } from 'constructs'
 import { type EnvName, PRODUCT } from './config.js'
 
@@ -41,6 +42,10 @@ type DbSecrets = {
   DB_NAME: EcsSecret
 }
 
+type AppSecrets = {
+  BETTER_AUTH_SECRET: EcsSecret
+}
+
 // `template` (bare) is a reserved DB name on RDS Postgres because the engine
 // uses `template0` / `template1` as system templates. Use `app` instead.
 // Local Compose / CI use `template_dev` / `template_test` — Postgres only
@@ -54,6 +59,7 @@ export class DataStack extends Stack {
   readonly cluster: Cluster
   readonly database: DatabaseInstance
   readonly dbSecrets: DbSecrets
+  readonly appSecrets: AppSecrets
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props)
@@ -134,6 +140,28 @@ export class DataStack extends Stack {
       DB_USER: EcsSecret.fromSecretsManager(dbSecret, 'username'),
       DB_PASSWORD: EcsSecret.fromSecretsManager(dbSecret, 'password'),
       DB_NAME: EcsSecret.fromSecretsManager(dbSecret, 'dbname')
+    }
+
+    // App-level secrets share one Secrets Manager entry as a JSON document so
+    // future fields (Stripe key, SES creds, etc.) just add another key without
+    // multiplying secrets and their per-secret monthly cost. Each field is
+    // injected into ECS as its own env var via fromSecretsManager(secret, key).
+    const appSecretsRaw = new Secret(this, 'AppSecrets', {
+      secretName: `${PRODUCT}-${envName}-app-secrets`,
+      description: 'App-level secrets (better-auth signing key, future app secrets)',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'betterAuthSecret',
+        passwordLength: 64,
+        // Punctuation-free keeps the value safe to inline in shell/JSON
+        // contexts. Better-auth uses it for HMAC, not URL-encoded transport,
+        // so no character-class requirements apply.
+        excludePunctuation: true
+      }
+    })
+
+    this.appSecrets = {
+      BETTER_AUTH_SECRET: EcsSecret.fromSecretsManager(appSecretsRaw, 'betterAuthSecret')
     }
 
     const migratorLogGroup = new LogGroup(this, 'MigratorLogs', {

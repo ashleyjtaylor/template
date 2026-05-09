@@ -29,7 +29,11 @@ const schema = z
     DB_PORT: z.coerce.number().int().positive().default(5432),
     DB_USER: z.string().default('postgres'),
     DB_PASSWORD: z.string().default('postgres'),
-    DB_NAME: z.string().default('template_dev')
+    DB_NAME: z.string().default('template_dev'),
+    // Signs better-auth session cookies. No default — production injects via
+    // Secrets Manager (infra/cdk/lib/data-stack.ts), CI via vitest.config.ts,
+    // local dev via apps/api/.env (see apps/api/.env.example).
+    BETTER_AUTH_SECRET: z.string().min(32)
   })
   // URL composition is duplicated in apps/api/prisma.config.ts (the Prisma
   // CLI's config file, which can't import from src/). Keep the two in sync

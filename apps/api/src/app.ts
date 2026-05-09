@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { env } from './env.js'
+import { auth } from './lib/auth.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { healthReady } from './middleware/health-ready.js'
 import { requestId } from './middleware/request-id.js'
@@ -37,6 +38,8 @@ export function createApp({
   )
 
   app.get('/health/ready', healthReady)
+
+  app.on(['POST', 'GET'], '/auth/*', (c) => auth.handler(c.req.raw))
 
   app.onError(errorHandler)
 

@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe('GET /health/ready', () => {
   it('should return 200 with checks.db ok when the probe succeeds', async () => {
-    vi.spyOn(prisma.meta, 'findFirst').mockResolvedValue(null)
+    vi.spyOn(prisma.user, 'findFirst').mockResolvedValue(null)
     const app = createApp({ gitSha: 'test' })
 
     const res = await app.request('/health/ready')
@@ -22,7 +22,7 @@ describe('GET /health/ready', () => {
   })
 
   it('should return 503 with checks.db down when the probe throws', async () => {
-    vi.spyOn(prisma.meta, 'findFirst').mockRejectedValue(new Error('connection refused'))
+    vi.spyOn(prisma.user, 'findFirst').mockRejectedValue(new Error('connection refused'))
     const app = createApp({ gitSha: 'test' })
 
     const res = await app.request('/health/ready')
@@ -36,8 +36,8 @@ describe('GET /health/ready', () => {
 
   it('should return 503 when the probe takes longer than the timeout', async () => {
     vi.useFakeTimers()
-    vi.spyOn(prisma.meta, 'findFirst').mockReturnValue(
-      new Promise(() => {}) as unknown as ReturnType<typeof prisma.meta.findFirst>
+    vi.spyOn(prisma.user, 'findFirst').mockReturnValue(
+      new Promise(() => {}) as unknown as ReturnType<typeof prisma.user.findFirst>
     )
     const app = createApp({ gitSha: 'test' })
 
