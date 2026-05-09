@@ -29,6 +29,7 @@ export interface AppStackProps extends StackProps {
   apiRepo: Repository
   cluster: Cluster
   dbSecrets: Record<string, EcsSecret>
+  appSecrets: Record<string, EcsSecret>
   imageTag: string
 }
 
@@ -36,7 +37,7 @@ export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props)
 
-    const { envName, vpc, albSg, ecsSg, apiRepo, cluster, dbSecrets, imageTag } = props
+    const { envName, vpc, albSg, ecsSg, apiRepo, cluster, dbSecrets, appSecrets, imageTag } = props
 
     const logGroup = new LogGroup(this, 'ApiLogs', {
       logGroupName: `/ecs/${PRODUCT}-${envName}-api`,
@@ -59,7 +60,7 @@ export class AppStack extends Stack {
         NODE_ENV: 'production',
         PORT: String(APP_PORT)
       },
-      secrets: dbSecrets,
+      secrets: { ...dbSecrets, ...appSecrets },
       // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
       // in apps/api/src/env.ts so the app can drain in-flight requests
       // before ECS force-kills the container.

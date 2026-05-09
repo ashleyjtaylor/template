@@ -41,6 +41,7 @@ for (const env of envs) {
     apiRepo: data.apiRepo,
     cluster: data.cluster,
     dbSecrets: data.dbSecrets,
+    appSecrets: data.appSecrets,
     imageTag
   })
 }
