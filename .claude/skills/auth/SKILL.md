@@ -58,12 +58,13 @@ user: {
   additionalFields: {
     firstname: { type: 'string', required: true, input: true },
     lastname: { type: 'string', required: true, input: true },
-    entityId: { type: 'string', required: true, input: false, defaultValue: () => `usr_${crypto.randomUUID()}` }
+    entityId: { type: 'string', required: true, input: false, defaultValue: () => `usr_${crypto.randomUUID()}` },
+    requestId: { type: 'string', required: false, input: false, defaultValue: () => getRequestId() ?? null }
   }
 }
 ```
 
-Per-table prefix lives in the **`database` skill registry** — add new prefixes there.
+Per-table prefix lives in the **`database` skill registry** — add new prefixes there. The `requestId` convention (every writable table we own carries one) is also documented there; this section just shows the better-auth-specific wiring.
 
 ## CSRF / Origin
 
