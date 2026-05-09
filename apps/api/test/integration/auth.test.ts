@@ -48,17 +48,33 @@ describe('POST /auth/sign-up/email', () => {
     const requestId = res.headers.get('x-request-id')
     expect(requestId).toMatch(/^req_[0-9a-f-]{36}$/)
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findUniqueOrThrow({
       where: { email },
       include: { sessions: true, accounts: true }
     })
-    expect(user).not.toBeNull()
-    expect(user?.entityId).toMatch(/^usr_[0-9a-f-]{36}$/)
-    expect(user?.firstname).toBe('Test')
-    expect(user?.lastname).toBe('User')
-    expect(user?.requestId).toBe(requestId)
-    expect(user?.sessions[0]?.requestId).toBe(requestId)
-    expect(user?.accounts[0]?.requestId).toBe(requestId)
+
+    expect(user.entityId).toMatch(/^usr_[0-9a-f-]{36}$/)
+    expect(user.firstname).toBe('Test')
+    expect(user.lastname).toBe('User')
+    expect(user.requestId).toBe(requestId)
+    expect(user.sessions[0]?.requestId).toBe(requestId)
+    expect(user.accounts[0]?.requestId).toBe(requestId)
+
+    const audits = await prisma.auditLog.findMany({
+      where: { actorUserId: user.entityId },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    expect(audits.map((a) => a.action)).toEqual(['user.signed_up', 'user.logged_in'])
+    expect(audits[0]?.requestId).toBe(requestId)
+    expect(audits[0]?.entityId).toMatch(/^aud_[0-9a-f-]{36}$/)
+    expect(audits[0]?.details).toMatchObject({
+      action: 'user.signed_up',
+      email,
+      firstname: 'Test',
+      lastname: 'User'
+    })
+    expect(audits[1]?.requestId).toBe(requestId)
   })
 
   it('should return 422 when the email is already registered', async () => {
@@ -96,6 +112,16 @@ describe('POST /auth/sign-in/email', () => {
 
     expect(res.status).toBe(200)
     expect(cookieFrom(res)).toContain('better-auth.session_token=')
+
+    const requestId = res.headers.get('x-request-id')
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } })
+    const loginAudits = await prisma.auditLog.findMany({
+      where: { actorUserId: user.entityId, action: 'user.logged_in' },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    expect(loginAudits).toHaveLength(2)
+    expect(loginAudits[1]?.requestId).toBe(requestId)
   })
 
   it('should return 401 on wrong password', async () => {
@@ -155,5 +181,18 @@ describe('POST /auth/sign-out', () => {
     const after = await app.request('/auth/get-session', { headers: { Cookie: cookie } })
     expect(after.status).toBe(200)
     expect(await after.json()).toBeNull()
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } })
+    const audits = await prisma.auditLog.findMany({
+      where: { actorUserId: user.entityId },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    expect(audits.map((a) => a.action)).toEqual([
+      'user.signed_up',
+      'user.logged_in',
+      'user.logged_out'
+    ])
+    expect(audits[2]?.requestId).toBe(res.headers.get('x-request-id'))
   })
 })
