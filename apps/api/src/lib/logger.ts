@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { pino, stdSerializers } from 'pino'
-import { env } from '../env.js'
+import { env } from '@/env.js'
 
 export interface RequestContext {
   requestId: string

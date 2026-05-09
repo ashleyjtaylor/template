@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type ClosableServer, registerShutdown } from './shutdown.js'
+import { type ClosableServer, registerShutdown } from '@/lib/shutdown.js'
 
 describe('registerShutdown', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>

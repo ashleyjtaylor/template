@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { createApp } from './app.js'
-import { prisma } from './lib/db.js'
+import { createApp } from '@/app.js'
+import { prisma } from '@/lib/db.js'
 
 // Integration tests for the better-auth-mounted /auth/* routes against a real
 // Postgres (Compose locally, postgres service container in CI). Each test uses

@@ -1,9 +1,9 @@
 import { serve } from '@hono/node-server'
-import { createApp } from './app.js'
-import { env } from './env.js'
-import { prisma } from './lib/db.js'
-import { logger } from './lib/logger.js'
-import { registerShutdown } from './lib/shutdown.js'
+import { createApp } from '@/app.js'
+import { env } from '@/env.js'
+import { prisma } from '@/lib/db.js'
+import { logger } from '@/lib/logger.js'
+import { registerShutdown } from '@/lib/shutdown.js'
 
 const app = createApp({ gitSha: env.GIT_SHA })
 

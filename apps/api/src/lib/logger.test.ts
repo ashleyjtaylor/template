@@ -1,6 +1,6 @@
 import { setImmediate as setImmediatePromise } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
-import { getRequestId, runWithContext } from './logger.js'
+import { getRequestId, runWithContext } from '@/lib/logger.js'
 
 describe('runWithContext / getRequestId', () => {
   it('should return the seeded request ID inside the callback', () => {

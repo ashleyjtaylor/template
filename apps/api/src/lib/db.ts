@@ -1,6 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
-import { env } from '../env.js'
+import { env } from '@/env.js'
 
 // Stash the client on globalThis in non-production so hot-reload tools
 // (tsx watch, vite-ssr, vitest workers, Next.js dev server, etc.) reuse the

@@ -8,7 +8,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   ValidationError
-} from './errors.js'
+} from '@/lib/errors.js'
 
 describe('HttpError subclasses', () => {
   it.each<[new (msg: string) => HttpError, number, string]>([
