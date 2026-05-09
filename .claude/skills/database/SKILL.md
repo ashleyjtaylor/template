@@ -1,0 +1,82 @@
+---
+name: database
+description: Apply database conventions — prefixed entity IDs, schema/column naming, migrations, soft-delete, cascade rules. Use when designing or reviewing schema changes, writing migrations, or naming a new entity.
+---
+
+Apply these to any schema change, migration, or new entity.
+
+## Prefixed entity IDs
+
+Every system-generated identifier — entities (`User`, `Session`, future `Organisation`, `Subscription`, `Upload`, etc.) and ephemeral identifiers (`req_…` HTTP request IDs) — uses Stripe-style `prefix_<id>` form.
+
+**Truncated, not full word.** 3-4 char prefix:
+
+- `usr_` not `user_`
+- `acct_` not `account_`
+- `sess_` not `session_`
+- `org_` (already short — keep)
+- `memb_` not `membership_`
+- `sub_` not `subscription_`
+- `upl_` not `upload_`
+
+**Generator**: `crypto.randomUUID()` (Node native, no dep). Same generator for everything; the prefix is the only differentiator. When `packages/ids` lands, it owns the generator.
+
+**Storage column**: `entityId` (camelCase, separate from the auth-framework-managed `id` column on better-auth tables; primary key on tables we own). The `entityId` is `@unique` and indexed — it is the public-facing identifier in URLs, logs, API responses. Internal joins still go through whichever column is the primary key.
+
+**New prefixes need user sign-off.** Once a prefix is chosen, it cannot be renamed without a data migration (the value is in URLs, logs, customer support records). Add the new entry to the registry below in the same PR that introduces it.
+
+### Prefix registry
+
+| Prefix | Entity | Defined in |
+|---|---|---|
+| `req_` | HTTP request ID | `apps/api/src/middleware/request-id.ts` |
+| `usr_` | User | `apps/api/src/lib/auth.ts` (better-auth `additionalFields.entityId.defaultValue`) |
+| `sess_` | Session | `apps/api/src/lib/auth.ts` |
+| `acct_` | Auth account (better-auth) | `apps/api/src/lib/auth.ts` |
+| `veri_` | Email verification token | `apps/api/src/lib/auth.ts` |
+
+## Column naming
+
+Default to **snake_case** for column names via Prisma's `@map`. Two exceptions exist today:
+
+1. **Better-auth tables** (User, Session, Account, Verification) keep camelCase columns to match better-auth's vendor schema 1:1 — its docs and migrations assume camelCase, and remapping every field would create an ongoing maintenance tax. Our additions on those tables (`entityId`, `firstname`, `lastname`) follow the same vendor convention for consistency within the table.
+2. **Tables we own** use snake_case (`created_at`, `user_id`, etc.).
+
+If a future vendor library forces another camelCase island, document the deviation in the schema file with a comment naming the vendor and reason.
+
+## Migrations
+
+- One commit per schema change; one Prisma migration directory per change. Don't bundle unrelated schema changes.
+- Migration names use kebab-slug describing the change (`add_auth_tables`, `add_organisation_membership`, not `update_schema`).
+- Generated locally via `pnpm exec prisma migrate dev --name <slug>` (apply to dev DB). Apply to test DB via `DB_NAME=template_test pnpm exec prisma migrate deploy`. Same files run in CI's `migrate-db` ECS one-off task against staging.
+- **Inspect the generated SQL before committing.** Prisma occasionally emits no-op or surprising SQL (e.g. converting `SERIAL` to explicit sequence + nextval) that may collide with the existing DB state. Strip noise; keep what actually expresses the schema delta.
+- Once a migration is committed and shipped, **never edit it**. Add a new migration to fix.
+
+## Foreign keys + cascades
+
+- Foreign keys to a parent that owns the child use `onDelete: Cascade` (`Session.userId → User.id`, `Account.userId → User.id`).
+- Foreign keys to a parent that doesn't own the child use the default `Restrict` — let the DB block deletion until the caller explicitly handles it. No `onDelete: SetNull` unless there's a documented reason in the schema.
+- Index every foreign key column. Prisma adds an index automatically when you declare the relation; verify the migration created it.
+
+## Soft delete
+
+Not implemented yet. When the first delete-user feature lands, add `deletedAt DateTime?` to the relevant tables and route reads through a repository helper that filters `deletedAt: null` by default. Until then: `delete()` is a hard delete.
+
+## Readiness probe
+
+`/health/ready` calls `prisma.user.findFirst()` to prove (a) DB reachable and (b) migrations applied. When the User table goes away or gets an access constraint that breaks a `findFirst()` from the API role, swap the probe to another long-lived table — but always use a real domain table (not a lighthouse table — those rot the moment a real model exists).
+
+## Connection URL composition
+
+Two places compose the Postgres URL from the five `DB_*` env vars: `apps/api/src/env.ts` (runtime client) and `apps/api/prisma.config.ts` (Prisma CLI). Both must produce the same string. The duplication is intentional — `prisma.config.ts` ships to the container's `/prod` directory after `pnpm deploy --prod`, where importing from `src/` isn't possible. Cross-file invariant comments in both files name the other; keep them in sync.
+
+RDS endpoints (`*.rds.amazonaws.com`) get `?sslmode=require&uselibpqcompat=true` appended — RDS forces TLS, and `pg-connection-string` interprets `sslmode=require` as `verify-full` which fails against RDS's Amazon CA. Local Compose / CI Postgres doesn't speak SSL, so the suffix is gated on host name.
+
+## Before adding a schema change, answer
+
+- What entity prefix? Is it already in the registry?
+- snake_case (we own it) or camelCase (vendor table)?
+- Foreign keys + cascade rules?
+- Indexes — beyond the auto-generated FK indexes, anything queried frequently?
+- Migration name slug?
+- Does this affect `/health/ready` or any other read?
