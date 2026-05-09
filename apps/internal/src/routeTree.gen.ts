@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuditEntityIdRouteImport } from './routes/audit.$entityId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -28,34 +29,42 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuditEntityIdRoute = AuditEntityIdRouteImport.update({
+  id: '/$entityId',
+  path: '/$entityId',
+  getParentRoute: () => AuditRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/audit': typeof AuditRoute
+  '/audit': typeof AuditRouteWithChildren
   '/login': typeof LoginRoute
+  '/audit/$entityId': typeof AuditEntityIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/audit': typeof AuditRoute
+  '/audit': typeof AuditRouteWithChildren
   '/login': typeof LoginRoute
+  '/audit/$entityId': typeof AuditEntityIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/audit': typeof AuditRoute
+  '/audit': typeof AuditRouteWithChildren
   '/login': typeof LoginRoute
+  '/audit/$entityId': typeof AuditEntityIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audit' | '/login'
+  fullPaths: '/' | '/audit' | '/login' | '/audit/$entityId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/login'
-  id: '__root__' | '/' | '/audit' | '/login'
+  to: '/' | '/audit' | '/login' | '/audit/$entityId'
+  id: '__root__' | '/' | '/audit' | '/login' | '/audit/$entityId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AuditRoute: typeof AuditRoute
+  AuditRoute: typeof AuditRouteWithChildren
   LoginRoute: typeof LoginRoute
 }
 
@@ -82,12 +91,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/audit/$entityId': {
+      id: '/audit/$entityId'
+      path: '/$entityId'
+      fullPath: '/audit/$entityId'
+      preLoaderRoute: typeof AuditEntityIdRouteImport
+      parentRoute: typeof AuditRoute
+    }
   }
 }
 
+interface AuditRouteChildren {
+  AuditEntityIdRoute: typeof AuditEntityIdRoute
+}
+
+const AuditRouteChildren: AuditRouteChildren = {
+  AuditEntityIdRoute: AuditEntityIdRoute,
+}
+
+const AuditRouteWithChildren = AuditRoute._addFileChildren(AuditRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AuditRoute: AuditRoute,
+  AuditRoute: AuditRouteWithChildren,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
