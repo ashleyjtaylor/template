@@ -11,7 +11,7 @@ afterAll(async () => {
 })
 
 describe('GET /health/ready (integration)', () => {
-  it('should return 200 against a real Postgres with the _meta migration applied', async () => {
+  it('should return 200 against a real Postgres with migrations applied', async () => {
     const app = createApp({ gitSha: 'test' })
 
     const res = await app.request('/health/ready')

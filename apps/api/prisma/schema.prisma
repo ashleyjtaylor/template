@@ -6,11 +6,75 @@ datasource db {
   provider = "postgresql"
 }
 
-// Lighthouse table — exists so /health/ready can prove both that the DB is
-// reachable AND that migrations have applied. No business meaning.
-model Meta {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now()) @map("created_at")
+// Auth tables (better-auth). Column names stay camelCase to match better-auth's
+// vendor schema 1:1 — its docs and migrations assume those names, and remapping
+// every field would create an ongoing maintenance tax. Our additions
+// (`entityId`, `firstname`, `lastname`) follow the same convention for
+// consistency within these tables.
 
-  @@map("_meta")
+model User {
+  id            String   @id
+  entityId      String   @unique
+  firstname     String
+  lastname      String
+  name          String?
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  entityId  String   @unique
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  entityId              String    @unique
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  entityId   String   @unique
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
 }

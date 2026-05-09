@@ -12,7 +12,7 @@ export const healthReady: Handler = async (c) => {
   })
 
   try {
-    const result = await Promise.race([prisma.meta.findFirst(), timeout])
+    const result = await Promise.race([prisma.user.findFirst(), timeout])
 
     if (result === 'timeout') {
       logger.warn({ timeoutMs: PROBE_TIMEOUT_MS }, 'health/ready: db probe timed out')

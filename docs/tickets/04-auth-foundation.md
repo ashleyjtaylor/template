@@ -28,7 +28,7 @@ Four new Prisma models from better-auth's standard schema, customised:
 
 **Soft-delete**: deferred. Adds when the first delete-user feature lands.
 
-**Migration**: one new migration `add_auth_tables` adds all four. Generated locally via `prisma migrate dev`; applied in CI via the existing `migrate-db` ECS one-off task.
+**Migration**: the previous `_meta` lighthouse table is dropped (the user table makes a better readiness probe target now that real domain tables exist), and the migration history is collapsed into a single fresh `init` migration. `/health/ready` now probes `prisma.user.findFirst()`. Applied in CI via the existing `migrate-db` ECS one-off task.
 
 ## API design
 - **Mount**: `app.mount('/auth', auth.handler)`. Routes used in this PR: `/auth/sign-up/email`, `/auth/sign-in/email`, `/auth/sign-out`, `/auth/get-session`.
