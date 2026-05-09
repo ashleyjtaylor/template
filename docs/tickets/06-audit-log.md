@@ -112,8 +112,8 @@ Append-only by code discipline. No `update` or `delete` calls anywhere in our co
 
 ## Documentation
 
-- **New `audit` skill** (`.claude/skills/audit/SKILL.md`) — action naming convention (past-tense + CRUD), `writeAudit` usage pattern, DO/DON'T for `details` payloads, tamper-evidence + retention policy, anonymisation rule on user-delete, the action union as the source of truth for "what events exist".
-- **`database` skill** — short cross-reference to the audit skill from the "Row → request correlation" section ("for high-level semantic events, see the `audit` skill — `requestId` is the lightweight per-row correlation, `audit_log` is the heavyweight semantic store").
+- **`database` skill** — extend with an "Audit log" section covering action naming (past-tense + CRUD), `writeAudit` usage pattern, DO/DON'T for `details` payloads, tamper-evidence + retention policy, anonymisation rule on user-delete, the action union as the source of truth. Audit log is a database concern (table, columns, write rules), so it lives as a section of the existing skill rather than spawning a new one.
+- The "Row → request correlation" section's reference to a "future `audit_log`" updates to point at the new section.
 
 ## Out of scope (deferred — explicit follow-ups)
 

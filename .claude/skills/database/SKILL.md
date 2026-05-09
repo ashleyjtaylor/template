@@ -77,7 +77,107 @@ The column captures the `req_<uuid>` of the HTTP request that created the row. I
 
 **For our own future tables**: declare the column on the model and populate at the call site (or via a Prisma client extension once we have several). When we have a third call site, factor into `packages/db`.
 
-**For full request meta-data** (headers, body hash, ipAddress, userAgent, etc.) on security-sensitive mutations: that lives in a future `audit_log` table, not on every row. `requestId` here is the lightweight correlation key; `audit_log` is the heavyweight event store.
+**For full request meta-data** (headers, body hash, ipAddress, userAgent, etc.) on security-sensitive mutations: that lives in the `audit_log` table, not on every row. `requestId` here is the lightweight per-row correlation key; `audit_log` (next section) is the heavyweight semantic event store.
+
+## Audit log
+
+`audit_log` is the **append-only** record of cross-cutting governance events. Lives in `apps/api/src/lib/audit.ts`. **Best-effort writes** (awaited but error-swallowed); never wrap in `prisma.$transaction` with the originating mutation — losing one event is preferable to failing a real user action because of an audit-write bug.
+
+### When to write an event
+
+Write one when the action is one of:
+
+- **Auth lifecycle** — signup, login, logout, password change, email change, 2FA toggle, account deletion. Wired today via better-auth's `databaseHooks.<model>.<event>.after`.
+- **Org governance** — org create/delete/rename, member invite/accept/remove, role change, billing-plan change.
+- **Staff actions** — anything performed from `apps/internal`, especially staff-as-customer impersonation (impersonation events are double-logged: actor + impersonated user).
+
+Don't write for:
+
+- Reads (no state changed)
+- Health probes, internal cron ticks, container lifecycle
+- Per-domain mutations that already have their own row (e.g. don't audit-log "document edited" — the document table is the audit). Audit is for **cross-cutting governance events**, not every business mutation.
+
+### How to write
+
+```ts
+import { writeAudit } from '@/lib/audit.js'
+
+// after the mutation has succeeded
+await writeAudit({
+  action: 'organisation.member.invited',
+  actorUserId: actor.entityId,
+  resourceId: org.entityId,
+  email: invitee.email,
+  role: 'admin'
+})
+```
+
+- Awaited, error-swallowed (~1-2ms latency, errors logged via pino at `error` level, never propagated)
+- Outside transactions
+- Better-auth events go through `databaseHooks.<model>.<event>.after` in `apps/api/src/lib/auth.ts`; our own services call `writeAudit` after the mutation succeeds
+
+### Action naming
+
+`<resource>.<event>` with these rules:
+
+- **Past-tense verbs by default** — `user.signed_up`, `user.logged_in`, `org.member.invited`, `org.role.changed`, `staff.impersonation.started`. Reads naturally as "X happened."
+- **CRUD-style where it fits** — `<resource>.created`, `<resource>.updated`, `<resource>.deleted` for pure lifecycle events on a single resource.
+- **snake_case for the verb part**, dot-separated for the noun chain.
+- **Pick once, never rename** — action names live in audit rows forever. Add a new action; deprecate the old in code.
+- **New actions need user sign-off** before adding to the union.
+
+### What to put in `details` (the JSON column)
+
+**DO store:**
+- Action discriminator (mirrored from the `action` field — keeps details self-contained for export/analysis)
+- Resource IDs (entityIds), role names, plan names
+- Before/after for changed scalars (`{ before: 'member', after: 'admin' }` on `org.role.changed`)
+- Email, firstname, lastname on signup events (already in user table; storing in audit is not new exposure, useful for support)
+
+**DON'T store anywhere:**
+- Passwords (hashed or otherwise), OAuth tokens, payment-card details, secrets
+- Full request bodies, full response bodies
+- Full email content (MIME bodies, message text)
+
+If unsure: lean against. Audit is forever; PII added today is PII you carry forever.
+
+### Tamper-evidence + retention
+
+Append-only by **code discipline**:
+
+- `writeAudit` is the **only** caller that touches `audit_log`. It only does `prisma.auditLog.create`.
+- Never call `update` / `delete` / `deleteMany` / `upsert` against `audit_log` from anywhere.
+- The **one exception**: user-deletion code anonymises rows by nullifying `actorUserId` / `actorImpersonatorId` (see below). That's the only allowed `update` path.
+- DB-level hardening (`REVOKE`, hash chains, signed rows) is appropriate at the SOC2 / HIPAA stage. Premature today.
+
+Retention: **forever.** No scheduled cleanup. ~5 GB/year at our scale; storage is cheap and future compliance always leans toward longer retention.
+
+### Anonymisation on user delete
+
+When the user-deletion feature lands (deferred), it must call:
+
+```ts
+await prisma.auditLog.updateMany({
+  where: { actorUserId: user.entityId },
+  data: { actorUserId: null }
+})
+await prisma.auditLog.updateMany({
+  where: { actorImpersonatorId: user.entityId },
+  data: { actorImpersonatorId: null }
+})
+```
+
+The action and details survive — identity is erased. Personal fields inside `details` (email, firstname, lastname) also need nulling out by the same flow. This is the **only** code path allowed to `update` `audit_log`.
+
+### Source of truth: the action union
+
+Every audit action lives as a member of the `AuditEvent` discriminated union in `apps/api/src/lib/audit.ts`. To add one:
+
+1. Add the new union member with the typed payload fields.
+2. Add a caller (`writeAudit({ action: '...', ... })`) at the mutation site.
+3. PR the change with the same review depth as a public API addition — these names persist forever.
+
+Never write `prisma.auditLog.create` directly; always go through `writeAudit`.
 
 ## Soft delete
 
