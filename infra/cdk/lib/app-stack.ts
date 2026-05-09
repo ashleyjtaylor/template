@@ -45,6 +45,18 @@ export class AppStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     })
 
+    // ALB is constructed before the task definition so its generated DNS name
+    // can be injected into the container's BETTER_AUTH_URL env var. Until DNS
+    // lands, the ALB DNS is the canonical public origin better-auth uses for
+    // OAuth callbacks, email-verification links, etc. Swap to the real
+    // `https://api.<domain>` once Route53/ACM are wired.
+    const alb = new ApplicationLoadBalancer(this, 'Alb', {
+      vpc,
+      internetFacing: true,
+      securityGroup: albSg,
+      loadBalancerName: `${PRODUCT}-${envName}`
+    })
+
     const taskDef = new FargateTaskDefinition(this, 'ApiTask', {
       cpu: 256,
       memoryLimitMiB: 512
@@ -58,7 +70,8 @@ export class AppStack extends Stack {
       // self-describing. Injecting it here too would let the values disagree.
       environment: {
         NODE_ENV: 'production',
-        PORT: String(APP_PORT)
+        PORT: String(APP_PORT),
+        BETTER_AUTH_URL: `http://${alb.loadBalancerDnsName}`
       },
       secrets: { ...dbSecrets, ...appSecrets },
       // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
@@ -89,13 +102,6 @@ export class AppStack extends Stack {
       assignPublicIp: false,
       securityGroups: [ecsSg],
       vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS }
-    })
-
-    const alb = new ApplicationLoadBalancer(this, 'Alb', {
-      vpc,
-      internetFacing: true,
-      securityGroup: albSg,
-      loadBalancerName: `${PRODUCT}-${envName}`
     })
 
     const targetGroup = new ApplicationTargetGroup(this, 'ApiTargets', {
