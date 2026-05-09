@@ -12,6 +12,84 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-09 — Audit log foundation (schema + write path)
+
+- **Branch / PR**: `feat/api-audit-log` (#31)
+- **Plan**: `docs/tickets/06-audit-log.md`
+- **What landed**:
+  - **`audit_log` table** — first table we own that isn't vendor-managed. `entity_id` PK with `aud_` prefix; `request_id` (cross-cutting convention from #30); snake_case columns via `@map`; indexes by `(actor_user_id, created_at)`, `(resource_type, resource_id, created_at)`, `(action, created_at)`, and `request_id`. `details Json` carries action-specific payload; we don't query into it. No FK to `User` — keeps audit independent of user-table cascades.
+  - **`writeAudit` helper** (`apps/api/src/lib/audit.ts`) with a typed discriminated `AuditEvent` union covering auth + org + staff scopes (org and staff are type-only entries with no callers yet, ready for future feature PRs to wire). Awaited but error-swallowed (B1 — losing one event is preferable to failing a real user action because of an audit-write bug). Never wrap in `prisma.$transaction`.
+  - **Better-auth wiring** — `databaseHooks.after` for `user.create`, `session.create`, `session.delete` call `writeAudit`. Signup intentionally yields **two events** (`user.signed_up` + `user.logged_in`) — semantically correct and avoids fragile differentiation logic that would silently drop the login event for a returning-user-with-zero-sessions edge case.
+  - **3 new unit tests** for `writeAudit` (happy path, resourceType inference, error swallowing). Existing signup/signin/signout integration tests extended to assert `audit_log` rows match the response `X-Request-Id`. 43 tests total now.
+  - **`database` skill** extended with a new "Audit log" section (action naming, `writeAudit` usage, DO/DON'T for `details`, tamper-evidence by code discipline, retention forever, anonymisation rule on user-delete, action-union as source of truth). Audit log is a database concern — section in the existing skill rather than a new skill file.
+- **What's now possible**:
+  - Every auth lifecycle event (signup, login, logout) is recorded with actor + requestId + timestamp + details payload.
+  - Future org-governance and staff-action PRs add callers without extending the schema — the typed union already lists their actions.
+  - Single source of truth for "what events exist" is the `AuditEvent` union; reviewers grep one file to see the full action surface.
+- **Deferred**:
+  - **Read API + UI** in `apps/internal` (its own `/pre-feature` once `apps/internal` is scaffolded)
+  - **API request log** (the second observability feature alongside this one — every HTTP request stored, browsable; own `/pre-feature` next)
+  - **Outbox pattern** / true tamper-evidence (hash chain, DB-level `REVOKE`) — adopt at SOC2 / HIPAA threshold
+  - **User-deletion anonymisation logic** — lands with the user-delete feature
+  - **Org-governance + staff event callers** — type entries exist; callers land with each respective feature PR
+
+## 2026-05-09 — `requestId` column on auth tables (request-row correlation)
+
+- **Branch / PR**: `feat/api-auth-request-id` (#30)
+- **Plan**: `docs/tickets/05-auth-request-id.md`
+- **What landed**:
+  - **`requestId String?` + `@@index([requestId])`** on `User`, `Session`, `Account`, `Verification`. Nullable + non-unique + indexed — out-of-request inserts (seed scripts, future jobs, manual SQL) leave `NULL`; one HTTP request typically writes multiple rows; lookups are sparse but selective.
+  - **Wired via better-auth's `additionalFields.requestId.defaultValue: () => getRequestId() ?? null`** on each model. Same pattern as `entityId` — better-auth's adapter strips fields not declared via `additionalFields`, so a hook-injection alone gets discarded.
+  - **Middleware fix** — `apps/api/src/middleware/request-id.ts` now sets `X-Request-Id` on `c.res.headers` *after* `next()` returns, not via the pre-flight `c.header()` call. The old approach was discarded for `/auth/*` because `(c) => auth.handler(c.req.raw)` returns better-auth's fresh `Response` that replaces `c.res`. Post-flight set works for both Hono-built and handler-returned responses.
+  - **Test extension** — the existing signup integration test asserts `user.requestId`, `session.requestId`, and `account.requestId` all match the `X-Request-Id` response header (one assertion proves wiring + middleware fix end-to-end).
+  - **`database` skill** — new "Row → request correlation" section (every writable table we own carries this column; non-auth tables populate at the call site or via a Prisma extension when we have a third).
+- **What's now possible**:
+  - Any row in the auth tables can be traced to its originating HTTP request. Support investigation: "what did request `req_abc123` write?" → `SELECT FROM user WHERE request_id = ...` plus same query against session/account/verification.
+- **Deferred**:
+  - **Per-table `requestId` convention** applies to all future tables we own (already documented in the database skill); no retroactive backfill needed since there are zero other tables yet.
+  - **Full request meta-data** (headers, body hash, ipAddress, userAgent on every mutation) — that lives in the `audit_log` table that follows in #31, not on every row.
+
+## 2026-05-09 — Auth followups (env-var docs, `@/` alias, test reorg, `BETTER_AUTH_URL`)
+
+- **Branch / PR**: `fix/api-auth-followups` (#29)
+- **What landed**:
+  - **`apps/api/.env.example`** documents `NODE_ENV=development` (without it, better-auth's IP-resolver dev fallback doesn't fire and `session.ipAddress` lands as `''`) and `CORS_ORIGINS=http://localhost:3000` (without it, Postman / curl get `MISSING_OR_NULL_ORIGIN`).
+  - **`@/` path alias enabled across `apps/api`** — `tsconfig.json` adds `paths: { "@/*": ["./src/*"] }`, build chains `tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json` (tsc emits unresolved `@/` specifiers; tsc-alias rewrites them to relative paths in `dist/`), vitest uses its built-in `resolve.tsconfigPaths` (no plugin dep). All 17 src files rewritten — no relative imports remain.
+  - **Tests moved** out of `src/` into `apps/api/test/{unit,integration}/`. The `.integration.test.ts` suffix dropped (now redundant), and the matching `src/**/*.test.ts` exclude removed from `tsconfig.build.json`. Vitest auto-finds tests in the new location.
+  - **`BETTER_AUTH_URL` wired** end-to-end. `env.ts` adds it as `z.string().url()` defaulting to `http://localhost:3000` (silences `pnpm dev`'s "Base URL could not be determined" warning without per-developer setup). `auth.ts` passes `baseURL: env.BETTER_AUTH_URL`. CDK app-stack reorders so the ALB is created before the task-def, then injects `BETTER_AUTH_URL: \`http://${alb.loadBalancerDnsName}\`` into the container env. CFN synth confirms `Fn::Join("http://", Fn::GetAtt(Alb, DNSName))`.
+  - **New `auth` skill** (`.claude/skills/auth/SKILL.md`) consolidates the load-bearing decisions: framework choice, no-aliases rule for vendor route names, sessions vs JWT decision tree, the cookie-vs-JWT-in-memory security myth, how to extend better-auth tables (`additionalFields` vs `databaseHooks`), CSRF/Origin requirements, env-var wiring, the better-auth body-schema deviations, and what's deferred.
+- **What's now possible**:
+  - Local dev with `cp apps/api/.env.example apps/api/.env` is one step from working — no per-developer hunting for missing env vars.
+  - `pnpm dev` no longer prints the better-auth base-URL warning.
+  - Source files use `@/lib/...` instead of `../../lib/...` — refactors that move files don't have to fix-up relative paths.
+- **Deferred**:
+  - `/auth/login` and `/auth/signup` route aliases — initially built, then reverted on user pushback (vendor route names only, no aliases). Captured in the auth skill's "Use the vendor route names" section.
+  - `CORS_ORIGINS` injection via CDK once SPAs scaffold (currently just the local dev value).
+
+## 2026-05-09 — Auth foundation (better-auth signup/signin/signout)
+
+- **Branch / PR**: `feat/api-auth` (#28)
+- **Plan**: `docs/tickets/04-auth-foundation.md`
+- **What landed**:
+  - **better-auth wired into Hono** at `/auth/*` (`app.on(['POST', 'GET'], '/auth/*', (c) => auth.handler(c.req.raw))`), with `prismaAdapter` over the existing client. Email + password only, DB-backed cookie sessions (no JWT, no Redis), cookies `Secure + HttpOnly + SameSite=Lax`. `BETTER_AUTH_SECRET` validated at startup (`z.string().min(32)`, no default).
+  - **Schema** — four new tables (`User`, `Session`, `Account`, `Verification`) following better-auth's vendor schema (camelCase columns, lowercase table names) plus a per-table `entityId String @unique` column. The previous `_meta` lighthouse table is dropped — `/health/ready` now probes `prisma.user.findFirst()` since a real domain table exists. Migration history collapsed into a single fresh `init` migration.
+  - **Prefixed entityIds** — `usr_<uuid>` / `sess_<uuid>` / `acct_<uuid>` / `veri_<uuid>` generated via `crypto.randomUUID()`. Added through better-auth's `additionalFields.entityId.defaultValue` rather than `databaseHooks` — the Prisma adapter strips fields not declared in better-auth's schema, so a hook-injected entityId gets discarded before insert.
+  - **CDK** — new Secrets Manager secret `${PRODUCT}-${envName}-app-secrets` (one JSON document, future fields just add a key) with auto-generated 64-char `betterAuthSecret`. AppStack injects it into the API task as `BETTER_AUTH_SECRET` via `EcsSecret.fromSecretsManager(secret, 'betterAuthSecret')`. Migrator task unchanged — it doesn't load `env.ts`.
+  - **New `database` skill** (`.claude/skills/database/SKILL.md`) — owns the prefixed-ID registry, schema/column naming, migration etiquette, FK/cascade rules, soft-delete posture, runtime URL composition note. Code-style now points to it for ID conventions instead of restating them.
+  - **8 integration tests** in `apps/api/src/auth.integration.test.ts` covering signup happy path + duplicate (422) + weak password (400), signin happy + wrong password (401), get-session with + without cookie, sign-out (200, requires `Origin` header for better-auth's CSRF check). Plan-vs-reality deltas captured in the ticket.
+- **What's now possible**:
+  - End-to-end signup → cookie → authenticated `/auth/get-session` works against the deployed API. Frontend SPAs can ship against the same routes when scaffolded.
+  - The `additionalFields.defaultValue` pattern is the established way to add app-owned columns to vendor tables.
+- **Deferred**:
+  - Email verification, magic link, password reset (need an email transport — SES not wired)
+  - OAuth providers (Google, GitHub, etc.)
+  - 2FA (TOTP)
+  - Organisations + memberships
+  - Staff role + impersonation (need `apps/internal`)
+  - `requireAuth` middleware + `getCurrentUser` helper (lands with first protected route)
+  - `packages/auth` extraction (lands at second consumer — likely the worker)
+  - Soft-delete on `User` (lands with first delete-user feature)
+
 ## 2026-05-08 — Database setup and check (RDS Postgres, Prisma, /health/ready, migration ECS task)
 
 - **Branch / PR**: `feat/api-db`

@@ -40,7 +40,7 @@ packages/
   entitlements/ pure plan → entitlements lookup
   errors/       typed error classes (ConflictError, NotFoundError, etc.)
   events/       in-process bus + outbox + BullMQ adapter
-  ids/          prefixed cuid2 generators (id('user') etc.)
+  ids/          prefixed id generators (id('usr') etc.)
   schemas/      shared Zod schemas (request/response shapes)
   test-factories/ typed builders for tests (createOrgWithOwner, etc.)
   types/        cross-package TypeScript types (string unions, branded ids)
@@ -139,8 +139,8 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 ### Identifiers
 
-- **Stripe-style prefixed IDs** for every system-generated identifier — entities (`user_…`, `org_…`, `membership_…`, `subscription_…` (ours, not Stripe's), `upload_…`, `audit_…`, `comp_grant_…`) and ephemeral identifiers (`req_…` for HTTP request IDs). Any new identifier follows the same `prefix_<id>` shape.
-- Underlying generators: cuid2 for entities (collision-resistant, URL-safe, no insertion-order leak); `crypto.randomUUID()` for request IDs (built into Node, no dep). When `packages/ids` lands, it owns both.
+- **Stripe-style truncated prefixed IDs** for every system-generated identifier — entities (`usr_…`, `org_…`, `memb_…`, `sub_…` (ours, not Stripe's), `upl_…`, `aud_…`, `cgrt_…`) and ephemeral identifiers (`req_…` for HTTP request IDs). Any new identifier follows the same `prefix_<id>` shape with a 3-4 char truncated prefix; the full registry lives in the `database` skill.
+- Underlying generator: `crypto.randomUUID()` (Node native, no dep) for both entity IDs and ephemeral IDs. When `packages/ids` lands, it owns the generator. Better-auth-managed tables (User, Session, Account, Verification) get the prefixed `entityId` via the adapter's `additionalFields.defaultValue`; better-auth's own internal `id` column stays untouched.
 - External Stripe IDs stored in dedicated `stripe_id` columns, never used as primary keys.
 
 ### Dates + money
@@ -150,9 +150,9 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 ### Audit log
 
-- `audit_log` table: `actor_user_id`, `action`, `target_type`, `target_id`, `metadata` (JSONB), `ip`, `user_agent`, `at`.
-- Only **staff actions** in `apps/internal` are audited by default. Customer-app actions are not (too noisy). Per-fork products in regulated spaces extend.
-- Storage in main Postgres, partitioned by month if it grows.
+- `audit_log` table: `entity_id` (PK, `aud_<uuid>`), `request_id`, `action`, `actor_user_id`, `actor_impersonator_id`, `resource_type`, `resource_id`, `ip_address`, `user_agent`, `details` (JSONB), `created_at`. Append-only by code discipline; `writeAudit` is the only write path. Indexed by `(actor_user_id, created_at)`, `(resource_type, resource_id, created_at)`, `(action, created_at)`, and `request_id`.
+- Scope: **auth lifecycle** (signup, login, logout, password change, …) **+ org governance** (create, member invite, role change, billing change) **+ staff actions** in `apps/internal` (especially impersonation, double-logged with both actor + impersonated user). Customer per-domain mutations get their own per-table history, not audit log.
+- Storage in main Postgres. Append-only forever; on user deletion the actor IDs get nulled (`updateMany`) but rows survive. Detailed conventions (`writeAudit` usage, action naming, DO/DON'T for `details`, anonymisation rule) live in the `database` skill.
 
 ---
 
