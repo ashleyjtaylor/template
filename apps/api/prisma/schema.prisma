@@ -86,3 +86,28 @@ model Verification {
   @@index([requestId])
   @@map("verification")
 }
+
+// First table we own (not vendor-managed). Snake_case columns via @map per
+// the database skill; entityId is the primary key (no separate vendor `id`).
+// Append-only by code discipline — nothing in our codebase calls update or
+// delete against this model. See `audit` skill for the action union and
+// usage rules.
+model AuditLog {
+  entityId            String   @id @map("entity_id")
+  requestId           String?  @map("request_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  action              String
+  actorUserId         String?  @map("actor_user_id")
+  actorImpersonatorId String?  @map("actor_impersonator_id")
+  resourceType        String?  @map("resource_type")
+  resourceId          String?  @map("resource_id")
+  ipAddress           String?  @map("ip_address")
+  userAgent           String?  @map("user_agent")
+  details             Json
+
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@index([action, createdAt])
+  @@index([requestId])
+  @@map("audit_log")
+}
