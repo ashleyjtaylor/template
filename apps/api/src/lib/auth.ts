@@ -53,7 +53,11 @@ export const auth = betterAuth({
       firstname: { type: 'string', required: true, input: true },
       lastname: { type: 'string', required: true, input: true },
       entityId: sharedEntityIdField('usr_'),
-      requestId: sharedRequestIdField
+      requestId: sharedRequestIdField,
+      // null | 'support' | 'engineer' | 'admin' — narrowed at the requireStaff
+      // helper layer (better-auth's additionalFields type is `string` only).
+      // input: false means API callers can never set their own role.
+      staffRole: { type: 'string', required: false, input: false }
     }
   },
   session: {
