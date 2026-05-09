@@ -24,7 +24,8 @@ graph TB
 
     ECR["ECR repo<br/>template-staging-api"]
     Logs["CloudWatch Logs<br/>/ecs/template-staging-api<br/>/ecs/template-staging-migrator<br/>30d retention"]
-    Secret["Secrets Manager<br/>template-staging-db-credentials"]
+    DbSecret["Secrets Manager<br/>template-staging-db-credentials"]
+    AppSecrets["Secrets Manager<br/>template-staging-app-secrets<br/>(betterAuthSecret, ...)"]
 
     Internet -->|HTTP :80| ALB
     ALB -->|target group<br/>health: GET /health| ECS
@@ -33,8 +34,9 @@ graph TB
     ECS -->|outbound via NAT| Internet
     ECR -.->|image pull on task start| ECS
     ECR -.->|same image, override CMD| Migrator
-    Secret -.->|injected as DB_* env vars| ECS
-    Secret -.->|injected as DB_* env vars| Migrator
+    DbSecret -.->|injected as DB_* env vars| ECS
+    DbSecret -.->|injected as DB_* env vars| Migrator
+    AppSecrets -.->|injected as BETTER_AUTH_SECRET| ECS
     ECS -.->|stdout / stderr| Logs
     Migrator -.->|stdout / stderr| Logs
 ```
@@ -47,51 +49,14 @@ graph TB
 
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
-- `template-staging-data` — ECR repo, RDS Postgres, Secrets Manager DB credentials, ECS cluster, migrator task definition + log group
+- `template-staging-data` — ECR repo, RDS Postgres, Secrets Manager DB credentials + app-secrets, ECS cluster, migrator task definition + log group
 - `template-staging-app` — Fargate service, API task def, ALB, target group, listener, API log group
 
 All stacks have `terminationProtection: false` so `cdk destroy "template-staging-*"` tears them down without manual intervention.
 
 ## Request paths
 
-**`/health`** — liveness probe used by ALB. No DB dependency.
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant ALB
-    participant ECS as ECS task (api)
-
-    Client->>ALB: GET http://<alb-dns>/health
-    ALB->>ECS: GET /health (HTTP :3000)
-    ECS-->>ALB: 200 { status, version, uptime }
-    ALB-->>Client: 200 { status, version, uptime }
-```
-
-`version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `uptime` is process uptime in whole seconds. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
-
-**`/health/ready`** — readiness probe used by internal monitoring. Hits the DB.
-
-```mermaid
-sequenceDiagram
-    participant Caller as Internal monitor
-    participant ALB
-    participant ECS as ECS task (api)
-    participant RDS as RDS Postgres
-
-    Caller->>ALB: GET /health/ready
-    ALB->>ECS: GET /health/ready
-    ECS->>RDS: SELECT * FROM _meta LIMIT 1<br/>(2s timeout)
-    alt DB reachable
-        RDS-->>ECS: row or null
-        ECS-->>ALB: 200 { status: ok, checks: { db: ok } }
-    else DB unreachable / timeout
-        ECS-->>ALB: 503 { status: unavailable, checks: { db: down } }
-    end
-    ALB-->>Caller: response
-```
-
-Failures here do **not** pull tasks out of rotation — ALB only watches `/health`. A flaky readiness probe surfaces in the monitoring dashboard rather than blackholing traffic.
+Per-route documentation lives in [`docs/endpoints.md`](endpoints.md) — request/response shape, sequence diagrams, status-code deviations, and the convention for adding new routes. This file (`system-design.md`) covers infra topology and deploy mechanics only.
 
 ## Deploy flow
 
@@ -125,10 +90,10 @@ Stripe / SES / Sentry / OAuth providers will get their own subsection here as th
 
 These are designed for in `project_overview.md` but absent from the live system:
 
-- **Data**: ElastiCache Redis, S3 (uploads). Application-level Secrets Manager secrets beyond the auto-generated DB credentials.
+- **Data**: ElastiCache Redis, S3 (uploads). (Application-level Secrets Manager secret `${PRODUCT}-${env}-app-secrets` IS deployed and currently holds `betterAuthSecret`; future fields like `stripeSecretKey` add to the same JSON document.)
 - **Edge**: Route53, ACM, CloudFront, HTTPS / TLS, custom domain
 - **Apps**: `apps/worker` (BullMQ consumer), `apps/web`, `apps/internal`, `apps/portal`
-- **Packages**: `packages/auth`, `packages/db`, `packages/billing`, `packages/errors`, `packages/types`, `packages/schemas`, etc.
+- **Packages**: `packages/auth` (better-auth wired inline at `apps/api/src/lib/auth.ts` until a second consumer arrives), `packages/db`, `packages/billing`, `packages/errors`, `packages/types`, `packages/schemas`, etc.
 - **Workflows**: `deploy-production.yml`, promote-by-image cross-env retag
 - **IAM**: deploy roles still hold `AdministratorAccess` — tightening deferred per `docs/runbooks/github-oidc-setup.md`
 - **Production env**: stacks compile during `cdk synth` but no workflow deploys them; sizing is identical to staging (parameterise when production actually runs)

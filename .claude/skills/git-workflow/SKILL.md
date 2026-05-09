@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Branching, committing, and PR conventions for this repo. Trunk-based with mandatory PR review. Apply to every change cycle.
+description: Branching, hooks, PR, and destructive-op rules for the trunk-based change cycle. Apply to every change. Use `/commit` for message format — not duplicated here.
 ---
 
 This repo is trunk-based: `main` is always deployable; every change lands via a short-lived feature branch and a PR.
@@ -37,28 +37,24 @@ The flow is:
 
 This applies to every commit, including follow-ups on a branch that already has earlier commits.
 
+**Commit messages**
+
+Use the `/commit` skill — it parses the staged diff and drafts a Conventional Commits message that passes commitlint. The full format spec, type table, and don't-list live there. Don't restate them here.
+
 **PR discipline**
 
-Don't run `gh pr create` automatically. After pushing the branch, stop. The user opens the PR (or explicitly asks you to). PRs are public artifacts; the user controls timing, body wording, and review batching.
-
-When the user does ask for a PR, the body shape:
+When the user says "push" (or equivalent), `git push -u origin <branch>` AND `gh pr create` together with a populated title and body — `push` implicitly approves PR creation per the memory feedback. Body shape:
 
 - `## Summary` — bullets, one per substantive change
-- `## Test plan` — checklist of validation steps
-- Related context — failure logs, runbook links, run URLs
+- `## Test plan` — checklist of validation steps; tick items I verified, leave reviewer-only items unchecked
+- `## Notes` — optional; reverted scope, deferred items, plan-vs-reality deltas
+- Heredoc the body via `gh pr create --body "$(cat <<'EOF' ... EOF)"` so markdown survives.
 
-**Conventional Commits**
-
-Commit messages are enforced by commitlint via the `commit-msg` hook. Use the `/commit` slash command to draft a message — it parses the staged diff and matches this repo's style.
-
-- Subject ≤ 72 chars, imperative mood, lowercase after the colon, no trailing period.
-- Body wraps at 72 chars; explain *why*, not *what* (the diff shows what).
-- Don't reference task / PR numbers in the subject; use a footer (`Refs: ABC-123`) if needed.
-- Don't squash unrelated changes; suggest splitting if the staged diff covers multiple concerns.
+Don't add Co-Authored-By trailers or "Generated with Claude Code" footers (existing memory rules).
 
 **Hooks are not optional**
 
-Pre-commit (Biome) and commit-msg (commitlint) hooks run via lefthook. Never skip them with `--no-verify`. If a hook fails, fix the underlying issue.
+Pre-commit (Biome) and commit-msg (commitlint) hooks run via lefthook. Never skip them with `--no-verify` or `-c commit.gpgsign=false`. If a hook fails, fix the underlying issue.
 
 **Destructive operations need explicit approval**
 
@@ -68,5 +64,6 @@ Never run without explicit, in-scope user confirmation:
 - `git reset --hard`, `git restore .`, `git checkout -- .`
 - `rm -rf` on anything outside a clearly-temporary build artifact
 - `git rebase -i` or any history-rewriting operation
+- `git branch -D` (force-delete unmerged branches)
 
 When in doubt, surface the action and ask.

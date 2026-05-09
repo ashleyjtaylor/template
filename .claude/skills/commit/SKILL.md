@@ -1,12 +1,14 @@
 ---
 name: commit
-description: Analyse staged changes and propose a Conventional Commits message that passes commitlint. Use when the user wants to commit their work.
+description: Draft a Conventional Commits message for currently staged changes. Triggered by `/commit`.
 ---
 
 Run these in parallel:
 1. `git status` — what's staged.
 2. `git diff --cached` — the staged content.
 3. `git log --oneline -10` — match this repo's commit style.
+
+If nothing is staged, say so and stop.
 
 Draft a message in Conventional Commits format:
 
@@ -46,5 +48,7 @@ Draft a message in Conventional Commits format:
 
 **Don't**
 - Don't squash unrelated changes; suggest splitting if the staged diff covers multiple concerns.
-- Don't reference task/PR numbers in the subject; use a footer (`Refs: ABC-123`) if needed.
+- Don't reference task / PR numbers in the subject; use a footer (`Refs: ABC-123`) if needed.
 - Don't run `git commit` yourself unless the user explicitly confirms — propose the message and the exact `git commit` command for them to invoke.
+
+For the surrounding workflow (branching, hooks, PR discipline, destructive-op approval), see the `git-workflow` skill.

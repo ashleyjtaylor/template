@@ -1,8 +1,12 @@
 ---
 name: project-init
-description: Interview the user relentlessly about the project and what their plan and ideas are.
+description: Initial project scoping interview, run once at project start. Output saved to `.claude/memory/project_overview.md`. Triggered by `/project-init`.
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer. The plan is to get a sold grasp of the project and to think about anything the user hasn't thought of or has missed in their initial ideas. Document the final overview under .claude/memory/project_overview.md with a link to it in .claude/MEMORY.md.
+Interview me relentlessly about every aspect of the project until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer. Surface anything I haven't thought of or have missed in my initial ideas.
 
-Ask the questions one at a time.
+Ask questions one at a time.
+
+Once we've worked through the full design, write the agreed overview to `.claude/memory/project_overview.md` and add a link from `.claude/MEMORY.md`.
+
+For ongoing per-feature design conversations, use the `pre-feature` skill instead — this skill is for the first-time scoping pass only.
