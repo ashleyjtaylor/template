@@ -39,7 +39,7 @@ export function createApp({
 
   app.get('/health/ready', healthReady)
 
-  app.on(['POST', 'GET'], '/auth/*', (c) => auth.handler(c.req.raw))
+  app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw))
 
   app.onError(errorHandler)
 
