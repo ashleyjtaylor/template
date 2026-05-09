@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { env } from '@/env.js'
+import { writeAudit } from '@/lib/audit.js'
 import { prisma } from '@/lib/db.js'
 import { getRequestId } from '@/lib/logger.js'
 
@@ -27,9 +28,16 @@ const sharedRequestIdField = {
   defaultValue: () => getRequestId() ?? null
 }
 
-// better-auth's user.create.before hook param doesn't carry our additionalFields
-// in its type. Narrow once at the call site instead of bracket-accessing.
+// better-auth's hook params don't carry our additionalFields in their types.
+// Narrow once at the call site instead of bracket-accessing throughout.
 type UserCreatePayload = { name?: string | null; firstname?: string; lastname?: string }
+type UserCreatedPayload = {
+  entityId: string
+  email: string
+  firstname?: string
+  lastname?: string
+}
+type SessionPayload = { userId: string }
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
@@ -69,6 +77,10 @@ export const auth = betterAuth({
   // better-auth's signup body still requires `name`. The hook composes it from
   // firstname+lastname when missing so the column is always populated, even if
   // a future caller sends only first/last.
+  // Auth events are emitted via after-hooks. Signup yields TWO events
+  // (`user.signed_up` from user.create.after AND `user.logged_in` from
+  // session.create.after) — semantically correct (user signed up AND was
+  // logged in) and avoids fragile differentiation logic. See `audit` skill.
   databaseHooks: {
     user: {
       create: {
@@ -81,6 +93,34 @@ export const auth = betterAuth({
               name: `${firstname ?? ''} ${lastname ?? ''}`.trim()
             }
           }
+        },
+        after: async (user) => {
+          const u = user as unknown as UserCreatedPayload
+          await writeAudit({
+            action: 'user.signed_up',
+            actorUserId: u.entityId,
+            email: u.email,
+            firstname: u.firstname ?? '',
+            lastname: u.lastname ?? ''
+          })
+        }
+      }
+    },
+    session: {
+      create: {
+        after: async (session) => {
+          const { userId } = session as SessionPayload
+          const user = await prisma.user.findUnique({ where: { id: userId } })
+          if (!user) return
+          await writeAudit({ action: 'user.logged_in', actorUserId: user.entityId })
+        }
+      },
+      delete: {
+        after: async (session) => {
+          const { userId } = session as SessionPayload
+          const user = await prisma.user.findUnique({ where: { id: userId } })
+          if (!user) return
+          await writeAudit({ action: 'user.logged_out', actorUserId: user.entityId })
         }
       }
     }
