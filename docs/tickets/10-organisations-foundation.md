@@ -184,29 +184,49 @@ Following the route → controller → service layering established by the audit
 
 ```
 apps/api/src/modules/organisations/
-  routes.ts        — Hono routes. Zod-parses inputs and delegates. No Prisma imports, no business logic.
-  controllers.ts   — Orchestration between validated inputs and services. Combines service calls,
-                     shapes responses, decides 4xx semantics (e.g. 404 vs found, alreadyMember branch).
-  service.ts       — Prisma queries + business logic: createOrg, addMember, changeRole, last-owner
-                     check (`wouldStillHaveOwner` exported pure helper), invite token issuance,
-                     the transactional accept flow.
-  schemas.ts       — Zod input/output schemas.
-  tokens.ts        — generateInviteToken, hashToken (sha256). Pure helpers, no I/O.
+  routes.ts        — Org-only routes (sign-up, create, read, edit, members, leave,
+                     transfer-ownership). No invitation routes — those live in their
+                     own module (see below).
+  controllers.ts   — Orchestration for the org routes.
+  service.ts       — Prisma queries + business logic: createOrg, getMembership,
+                     changeRole, removeMember, transferOwnership, last-owner check
+                     (`wouldStillHaveOwner` exported pure helper).
+  schemas.ts       — Zod input/output schemas + `Role` type.
+
+apps/api/src/modules/org-invitations/
+  routes.ts        — Two Hono instances: `orgInvitationRoutes` (mounted at
+                     `/api/orgs/:orgId/invitations` — create / list / revoke, all
+                     gated by `requireAdmin`) and `orgInvitationAcceptRoutes`
+                     (mounted at `/api/invitations` — public preview + authed accept).
+  controllers.ts   — Orchestration for invitation routes.
+  service.ts       — Prisma queries + business logic for invitations: create / list /
+                     revoke / get-by-token / accept. Imports `Role` from the orgs
+                     module's schemas.
+  schemas.ts       — `inviteRoleSchema`, `createInvitationSchema`,
+                     `listInvitationsQuerySchema`.
+  tokens.ts        — `generateInviteToken`, `hashToken` (sha256). Pure helpers.
 
 apps/api/src/middleware/
-  require-session.ts   — `requireSession` Hono middleware. Loads better-auth session, stashes on
-                         context as `authSession`. Throws 401 on missing/invalid. Reusable across
-                         any authed route, not org-specific.
-  require-org-role.ts  — `requireMember` / `requireAdmin` / `requireOwner` middlewares. Each reads
-                         `:orgId`, loads the caller's membership via service.getMembership, gates
-                         by role, stashes both `authSession` and `orgMembership` on context.
-                         Returns 404 for "org doesn't exist OR caller isn't a member" (no
-                         enumeration), 403 for "is a member but lacks role".
+  require-session.ts   — `requireSession` Hono middleware. Loads better-auth session,
+                         stashes on context as `authSession`. Throws 401 on missing/
+                         invalid. Reusable across any authed route, not org-specific.
+  require-org-role.ts  — `requireMember` / `requireAdmin` / `requireOwner` middlewares.
+                         Each reads `:orgId`, loads the caller's membership via
+                         service.getMembership, gates by role, stashes both
+                         `authSession` and `orgMembership` on context. Returns 404
+                         for "org doesn't exist OR caller isn't a member" (no
+                         enumeration), 403 for "is a member but lacks role". Works
+                         when mounted under a parent route that defines `:orgId`
+                         (Hono passes parent params to children).
 ```
 
-Two `Hono` instances exported from `routes.ts` — `orgRoutes` (mounted at `/api/orgs`) and `invitationAcceptRoutes` (mounted at `/api/invitations`) — wired in `src/app.ts`.
+Three `Hono` instances exported across the two modules:
 
-Audit events stay centralised in `modules/audit-log/events.ts` (single discriminated union) so `writeAudit` keeps exhaustive type checking. Orgs module imports `writeAudit` from `audit-log/service.ts`. Middleware imports `getMembership` from the orgs service; the orgs service does **not** import from middleware (preserves the layering — services are HTTP-agnostic).
+- `orgRoutes` → mounted at `/api/orgs`
+- `orgInvitationRoutes` → mounted at `/api/orgs/:orgId/invitations` (so `:orgId` resolves at the parent and `requireAdmin` reads it via `c.req.param('orgId')`)
+- `orgInvitationAcceptRoutes` → mounted at `/api/invitations`
+
+Audit events stay centralised in `modules/audit-log/events.ts` (single discriminated union) so `writeAudit` keeps exhaustive type checking. Both org and org-invitation modules import `writeAudit` from `audit-log/service.ts`. The org-invitations module imports `Role` from the orgs module's schemas; the orgs module has no imports from org-invitations (one-way dep). Middleware imports `getMembership` from the orgs service; services do **not** import from middleware (preserves the layering — services are HTTP-agnostic).
 
 `assertCan(membership, action)` / `packages/auth` extraction is **not done in this PR** — role checks live in the two middleware files as small helpers. Lifts to `packages/auth` at the second consumer (worker), per the package-extraction rule.
 

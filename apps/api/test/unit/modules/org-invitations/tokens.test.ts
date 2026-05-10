@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateInviteToken, hashToken } from '@/modules/organisations/tokens.js'
+import { generateInviteToken, hashToken } from '@/modules/org-invitations/tokens.js'
 
 describe('generateInviteToken', () => {
   it('should produce a base64url string of ~43 characters from 32 random bytes', () => {

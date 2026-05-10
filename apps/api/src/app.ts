@@ -9,7 +9,8 @@ import { healthReady } from '@/middleware/health-ready.js'
 import { requestId } from '@/middleware/request-id.js'
 import { requestLogger } from '@/middleware/request-logger.js'
 import { auditLogRoutes } from '@/modules/audit-log/routes.js'
-import { invitationRoutes, orgRoutes } from '@/modules/organisations/routes.js'
+import { orgInvitationAcceptRoutes, orgInvitationRoutes } from '@/modules/org-invitations/routes.js'
+import { orgRoutes } from '@/modules/organisations/routes.js'
 
 export interface AppOptions {
   gitSha: string
@@ -48,7 +49,8 @@ export function createApp({
 
   app.route('/api/audit-log', auditLogRoutes)
   app.route('/api/orgs', orgRoutes)
-  app.route('/api/invitations', invitationRoutes)
+  app.route('/api/orgs/:orgId/invitations', orgInvitationRoutes)
+  app.route('/api/invitations', orgInvitationAcceptRoutes)
 
   app.onError(errorHandler)
 
