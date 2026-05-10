@@ -43,7 +43,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
-  basePath: '/auth',
+  basePath: '/api/auth',
   trustedOrigins: env.CORS_ORIGINS,
   emailAndPassword: {
     enabled: true
@@ -53,7 +53,11 @@ export const auth = betterAuth({
       firstname: { type: 'string', required: true, input: true },
       lastname: { type: 'string', required: true, input: true },
       entityId: sharedEntityIdField('usr_'),
-      requestId: sharedRequestIdField
+      requestId: sharedRequestIdField,
+      // null | 'support' | 'engineer' | 'admin' — narrowed at the requireStaff
+      // helper layer (better-auth's additionalFields type is `string` only).
+      // input: false means API callers can never set their own role.
+      staffRole: { type: 'string', required: false, input: false }
     }
   },
   session: {

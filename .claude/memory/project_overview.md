@@ -111,7 +111,7 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 - **Same `users` table** as customer users, with `staffRole` field (`null | 'support' | 'engineer' | 'admin'`).
 - **DB-level invariant**: a user with `staffRole != null` cannot also be a member of a customer organisation (Prisma `@@check` + service-layer assertion). Prevents privilege-escalation footguns.
-- Staff users are bootstrapped via `pnpm bootstrap:staff --email=…` (one-shot CLI). After the first, additional staff are added through `apps/internal`.
+- Staff users are bootstrapped via the `bootstrap-staff` script — `pnpm --filter @template/api bootstrap:staff --email=…` locally, and the `bootstrap-staff` GitHub Actions workflow (`workflow_dispatch` only) for any deployed env. The workflow runs `aws ecs run-task` against a dedicated Fargate task definition with `BOOTSTRAP_STAFF_*` passed as runtime env overrides — no long-lived bootstrap secrets on the task def or in Secrets Manager. After the first, additional staff are added through `apps/internal` (UI deferred — workflow remains the path until then).
 
 ### Impersonation
 
@@ -586,9 +586,11 @@ pnpm bootstrap:staff   one-shot to create the first staff user in any env
 
 ### First-staff bootstrap
 
-- `pnpm bootstrap:staff --email=you@example.com` runs against any env via ECS exec.
-- Creates the user with `staffRole='admin'`, emails a magic link via SES.
-- After the first, additional staff are added through `apps/internal` by existing staff.
+- Local: `pnpm --filter @template/api bootstrap:staff --email=you@example.com --name="…" --password=… --role=admin`.
+- Deployed envs: trigger the `bootstrap-staff` GitHub Actions workflow (`workflow_dispatch` only). It runs `aws ecs run-task` against the `${product}-${env}-bootstrap` Fargate task definition with `BOOTSTRAP_STAFF_*` as runtime env overrides — bootstrap creds appear at trigger time only.
+- Idempotent: creates the user with the requested `staffRole` if missing; promotes an existing user to the requested role; no-op if already at that role. Never touches the password on a re-run.
+- Magic-link email + SES delivery deferred until the email transport lands; today the operator hands the chosen password to the new staff member out of band.
+- After the first staff user, additional staff are added through `apps/internal` by existing staff (UI deferred; workflow remains the path until the staff-management UI ships).
 
 ### CSRF
 

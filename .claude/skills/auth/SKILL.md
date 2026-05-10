@@ -7,15 +7,15 @@ Apply these to any auth-related change.
 
 ## Framework choice
 
-`better-auth`, self-hosted, configured in `apps/api/src/lib/auth.ts`. All auth routes are mounted at `/auth/*` via `app.on(['POST', 'GET'], '/auth/*', (c) => auth.handler(c.req.raw))`. We wrap better-auth in `packages/auth` only at its second consumer (likely the worker); until then it lives inline.
+`better-auth`, self-hosted, configured in `apps/api/src/lib/auth.ts`. All auth routes are mounted at `/api/auth/*` via `app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw))` with `basePath: '/api/auth'` on the better-auth config. The `/api` prefix exists because CloudFront forwards only `/api/*` to the ALB — every application route lives under it. We wrap better-auth in `packages/auth` only at its second consumer (likely the worker); until then it lives inline.
 
 ## Use the vendor route names
 
-Use better-auth's own paths — `/auth/sign-up/email`, `/auth/sign-in/email`, `/auth/sign-out`, `/auth/get-session`, etc. **Don't add aliases** like `/auth/login` or `/auth/signup`. Two ways to do the same thing doubles the test/doc surface area, makes errors harder to trace, and the indirection is its own bug magnet. The vendor names are what docs and Stack Overflow answers reference — keep them.
+Use better-auth's own paths — `/api/auth/sign-up/email`, `/api/auth/sign-in/email`, `/api/auth/sign-out`, `/api/auth/get-session`, etc. **Don't add aliases** like `/api/auth/login` or `/api/auth/signup`. Two ways to do the same thing doubles the test/doc surface area, makes errors harder to trace, and the indirection is its own bug magnet. The vendor names are what docs and Stack Overflow answers reference — keep them.
 
 ## Sessions vs JWT — current model and when to change
 
-**Today**: DB-backed cookie sessions. Cookie (`better-auth.session_token`) → row in `session` table → `userId`. `POST /auth/sign-out` deletes the row → instant revocation.
+**Today**: DB-backed cookie sessions. Cookie (`better-auth.session_token`) → row in `session` table → `userId`. `POST /api/auth/sign-out` deletes the row → instant revocation.
 
 | Factor | Cookie session (current) | JWT |
 |---|---|---|
@@ -81,12 +81,39 @@ For production: CDK injects `CORS_ORIGINS` per env (deferred until first SPA sca
 | Config | Source local | Source production |
 |---|---|---|
 | `BETTER_AUTH_SECRET` | `apps/api/.env` (developer-chosen) | Secrets Manager `${PRODUCT}-${envName}-app-secrets.betterAuthSecret`, injected via `EcsSecret.fromSecretsManager` |
-| `BETTER_AUTH_URL` | env.ts default `http://localhost:3000` | CDK app-stack injects `http://${alb.loadBalancerDnsName}`; swap to `https://api.<domain>` once Route53/ACM land |
-| `trustedOrigins` (= `env.CORS_ORIGINS`) | `apps/api/.env` | CDK env (deferred until SPAs scaffold) |
-| `basePath` | hardcoded `/auth` | same |
+| `BETTER_AUTH_URL` | env.ts default `http://localhost:3000` | CDK app-stack injects the CloudFront distribution URL (`https://${distribution.distributionDomainName}`); swap to `https://app.<domain>` once Route53/ACM land |
+| `trustedOrigins` (= `env.CORS_ORIGINS`) | `apps/api/.env` (`http://localhost:3000,http://localhost:5173`) | CDK app-stack injects the same CloudFront URL as `BETTER_AUTH_URL` |
+| `basePath` | hardcoded `/api/auth` | same |
 | `database` | `prismaAdapter(prisma, { provider: 'postgresql' })` | same |
 
 When you need a new env var that better-auth reads (e.g. `BETTER_AUTH_TELEMETRY_ENDPOINT`, OAuth client IDs/secrets), add it to `apps/api/src/env.ts` (validated by Zod) and inject through CDK — never `process.env.X` directly.
+
+## Staff identity (`staffRole` + `requireStaff`)
+
+Staff are users with `staffRole` set to one of `'support' | 'engineer' | 'admin'`. The column lives on the `User` table — same table as customer users — and is wired via better-auth `additionalFields` with `input: false` so the auth API can never set it from a request body. The string values are the source of truth: there is no separate staff-users table, no separate roles table.
+
+`apps/api/src/middleware/require-staff.ts` resolves the session, narrows the user shape, and throws `UnauthorizedError` (401) for no session and `ForbiddenError` (403) for any session whose `staffRole` is `null` or not in the allowed set. Apply per-route as positional middleware:
+
+```ts
+router.get('/api/audit-log', requireStaff, async (c) => { ... })
+```
+
+The middleware writes the resolved `staffSession` onto the Hono context (`c.get('staffSession')`) — handlers can read the staff user's email / entityId / staffRole without re-fetching.
+
+The middleware does NOT differentiate between the three staff roles today — `support`, `engineer`, and `admin` all pass. When per-role gates appear (e.g. only `admin` can change billing plans), add a `requireStaffRole('admin')` factory that wraps `requireStaff`; don't reach for `assertCan` / membership-style permissions for staff actions.
+
+## Bootstrapping the first staff user
+
+There is no public route to set `staffRole` (the `input: false` on `additionalFields` blocks the auth API). The `bootstrap-staff` script is the **only** path that promotes a user to staff:
+
+- **Local**: `pnpm --filter @template/api bootstrap:staff --email=… --name="…" --password=… --role=admin`.
+- **Staging / production**: `.github/workflows/bootstrap-staff.yml` (`workflow_dispatch` only) runs `aws ecs run-task` against the `template-${env}-bootstrap` Fargate task definition with the four `BOOTSTRAP_STAFF_*` inputs as **runtime env overrides**. Bootstrap creds appear at trigger time only — no long-lived env vars on the task definition or in Secrets Manager.
+
+The script (`apps/api/src/scripts/bootstrap-staff.ts`) is idempotent: it creates the user via `auth.api.signUpEmail` if missing (so the password is hashed by better-auth and the `user.signed_up` audit event fires), then sets `staffRole` via a direct `prisma.user.update`. Re-running with the same role is a no-op; with a different role it updates `staffRole` only — never the password.
+
+After the first staff user exists, additional staff are added through `apps/internal` (deferred — staff-management UI lands in its own PR).
+
+See [`docs/runbooks/staff-bootstrap.md`](../../../docs/runbooks/staff-bootstrap.md) for the operator-facing runbook.
 
 ## better-auth body schema deviations
 
@@ -101,14 +128,14 @@ Better-auth 1.6.x hardcodes a couple of things you can't config away. Document n
 - `requireAuth` middleware + `getCurrentUser` helper — ship with the first protected route, not preemptively (rule: no helpers under three call sites)
 - Email verification / magic link / password reset — need an email transport (SES not wired)
 - OAuth providers (Google, GitHub, etc.)
-- 2FA (TOTP)
+- 2FA (TOTP) — staff sessions will require it (per `project_overview.md`); end-user 2FA optional
 - Organisations + memberships
-- Staff role + impersonation
+- Impersonation — `audit_log.actor_impersonator_id` column already exists; needs a session-creation endpoint and a staff-management UI to be useful
+- Staff-management UI in `apps/internal` (set/clear `staffRole` from the dashboard) — replaces the workflow_dispatch path for adding additional staff after bootstrap
 - `packages/auth` extraction (lands at second consumer)
-- `BETTER_AUTH_URL` swap to `https://api.<domain>` (lands with Route53/ACM)
+- `BETTER_AUTH_URL` swap to `https://app.<domain>` (lands with Route53/ACM)
 - JWT plugin (lands when mobile or third-party API consumer arrives — see "Sessions vs JWT" above)
 - Rate limiting (better-auth has its own; defer until rate-limit work lands)
-- Audit log
 
 ## Before adding an auth-touching change, answer
 

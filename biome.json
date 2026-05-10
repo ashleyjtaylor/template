@@ -14,7 +14,8 @@
       "!**/.turbo",
       "!**/.next",
       "!**/coverage",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!**/routeTree.gen.ts"
     ]
   },
   "formatter": {
@@ -44,6 +45,11 @@
   "json": {
     "formatter": {
       "trailingCommas": "none"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

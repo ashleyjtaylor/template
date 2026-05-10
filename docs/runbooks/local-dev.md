@@ -58,13 +58,43 @@ curl http://localhost:3000/health/ready
 For auth requests via Postman / curl, you must send an `Origin` header that matches one of the values in `CORS_ORIGINS`, otherwise better-auth returns `MISSING_OR_NULL_ORIGIN` or `INVALID_ORIGIN`. Example:
 
 ```bash
-curl -X POST http://localhost:3000/auth/sign-up/email \
+curl -X POST http://localhost:3000/api/auth/sign-up/email \
   -H 'Content-Type: application/json' \
   -H 'Origin: http://localhost:3000' \
   -d '{"email":"x@y.com","password":"abcd1234","firstname":"X","lastname":"Y","name":"X Y"}'
 ```
 
 Browsers set `Origin` automatically; only manual tools need to specify it.
+
+## Running the internal SPA
+
+`apps/internal` is the staff-facing dashboard (login + audit-log views). Vite dev server, separate from the API, talks to `http://localhost:3000` for `/api/*`:
+
+```bash
+pnpm --filter @template/internal dev
+```
+
+Defaults to `http://localhost:5173`. Add the SPA origin to the API's `CORS_ORIGINS` so the browser cookie + better-auth CSRF check pass:
+
+```
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+Without a staff user the login screen still works but every audit-log call returns 403. Create one with the bootstrap script (next section).
+
+## Bootstrapping a staff user locally
+
+The `staffRole` column gates `/api/audit-log/*` and any future internal route. There is no UI for self-promotion (by design) — use the bootstrap script:
+
+```bash
+pnpm --filter @template/api bootstrap:staff \
+  --email=you@example.com \
+  --name="Your Name" \
+  --password='choose-something-strong' \
+  --role=admin
+```
+
+Idempotent: re-running with the same email + role is a no-op; with a different role it updates `staffRole` only. For the production / staging path see [`staff-bootstrap.md`](./staff-bootstrap.md).
 
 ## Running tests
 

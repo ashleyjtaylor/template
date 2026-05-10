@@ -179,6 +179,10 @@ Every audit action lives as a member of the `AuditEvent` discriminated union in 
 
 Never write `prisma.auditLog.create` directly; always go through `writeAudit`.
 
+### Read API + UI
+
+The `audit_log` table is exposed read-only at `/api/audit-log`, `/api/audit-log/actions`, and `/api/audit-log/:entityId`, gated by the `requireStaff` middleware (see the `auth` skill). `apps/internal` consumes those routes — list view with filter + cursor pagination, detail view with the full `details` JSON. Per-route documentation lives in `docs/endpoints.md`.
+
 ## Soft delete
 
 Not implemented yet. When the first delete-user feature lands, add `deletedAt DateTime?` to the relevant tables and route reads through a repository helper that filters `deletedAt: null` by default. Until then: `delete()` is a hard delete.

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@/app.js'
 import { prisma } from '@/lib/db.js'
 
-// Integration tests for the better-auth-mounted /auth/* routes against a real
+// Integration tests for the better-auth-mounted /api/auth/* routes against a real
 // Postgres (Compose locally, postgres service container in CI). Each test uses
 // a fresh email so no per-test DB cleanup is needed.
 
@@ -17,7 +17,7 @@ const signUp = (
   firstname = 'Test',
   lastname = 'User'
 ) =>
-  app.request('/auth/sign-up/email', {
+  app.request('/api/auth/sign-up/email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
     body: JSON.stringify({
@@ -35,7 +35,7 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-describe('POST /auth/sign-up/email', () => {
+describe('POST /api/auth/sign-up/email', () => {
   it('should create a user with a usr_-prefixed entityId and set a session cookie', async () => {
     const app = createApp({ gitSha: 'test' })
     const email = uniqueEmail('signup-happy')
@@ -98,13 +98,13 @@ describe('POST /auth/sign-up/email', () => {
   })
 })
 
-describe('POST /auth/sign-in/email', () => {
+describe('POST /api/auth/sign-in/email', () => {
   it('should sign in an existing user and set a session cookie', async () => {
     const app = createApp({ gitSha: 'test' })
     const email = uniqueEmail('signin-happy')
     await signUp(app, email)
 
-    const res = await app.request('/auth/sign-in/email', {
+    const res = await app.request('/api/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
       body: JSON.stringify({ email, password: 'abcd1234' })
@@ -129,7 +129,7 @@ describe('POST /auth/sign-in/email', () => {
     const email = uniqueEmail('signin-wrong')
     await signUp(app, email)
 
-    const res = await app.request('/auth/sign-in/email', {
+    const res = await app.request('/api/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
       body: JSON.stringify({ email, password: 'WRONG-pwd' })
@@ -139,14 +139,14 @@ describe('POST /auth/sign-in/email', () => {
   })
 })
 
-describe('GET /auth/get-session', () => {
+describe('GET /api/auth/get-session', () => {
   it('should return the user and session when called with a valid cookie', async () => {
     const app = createApp({ gitSha: 'test' })
     const email = uniqueEmail('session-cookie')
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
 
-    const res = await app.request('/auth/get-session', { headers: { Cookie: cookie } })
+    const res = await app.request('/api/auth/get-session', { headers: { Cookie: cookie } })
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as { user: { email: string }; session: { token: string } }
@@ -157,28 +157,28 @@ describe('GET /auth/get-session', () => {
   it('should return null when called without a cookie', async () => {
     const app = createApp({ gitSha: 'test' })
 
-    const res = await app.request('/auth/get-session')
+    const res = await app.request('/api/auth/get-session')
 
     expect(res.status).toBe(200)
     expect(await res.json()).toBeNull()
   })
 })
 
-describe('POST /auth/sign-out', () => {
+describe('POST /api/auth/sign-out', () => {
   it('should delete the session and cause subsequent get-session to return null', async () => {
     const app = createApp({ gitSha: 'test' })
     const email = uniqueEmail('signout')
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
 
-    const res = await app.request('/auth/sign-out', {
+    const res = await app.request('/api/auth/sign-out', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: ORIGIN, Cookie: cookie },
       body: JSON.stringify({})
     })
     expect(res.status).toBe(200)
 
-    const after = await app.request('/auth/get-session', { headers: { Cookie: cookie } })
+    const after = await app.request('/api/auth/get-session', { headers: { Cookie: cookie } })
     expect(after.status).toBe(200)
     expect(await after.json()).toBeNull()
 

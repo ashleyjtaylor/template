@@ -5,6 +5,8 @@ description: Apply consistent code style and engineering standards to a file or 
 
 Apply these rules to the code in scope. Fix violations. Do not change behaviour.
 
+**Frontend specifics live elsewhere.** This skill is the cross-language baseline. For SPA work see the `css` skill (Tailwind 4 + shadcn, layout, typography) and the `react` skill (components, routing, data fetching, module structure).
+
 **Formatting is automatic.** Biome is the source of truth (single quotes, no trailing commas, semicolons as-needed). Don't argue with it; don't override per-file. Run `pnpm format` if a file looks off.
 
 **File organization**

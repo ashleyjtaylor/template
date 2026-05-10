@@ -13,6 +13,7 @@
     "typecheck": "tsc",
     "test": "vitest run",
     "studio": "prisma studio",
+    "bootstrap:staff": "tsx --env-file-if-exists=.env src/scripts/bootstrap-staff.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

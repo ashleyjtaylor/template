@@ -23,10 +23,12 @@ Invoke the matching skill at each phase rather than ad-hoc:
 - `/building-feature` — Definition of Done checklist; a feature is not complete until lint/typecheck/build/tests pass, both local and production paths are implemented, and **all relevant docs are updated in the same PR** (the documentation step is a hard checkpoint, not a "we'll get to it")
 - `/commit` — drafts a Conventional Commits message for currently staged changes
 - `/debug` — structured debugging (state what's known, narrow the failing layer, verify assumptions, add diagnostic logging before guessing at fixes)
-- `/code-style` — apply TS / formatting / naming conventions to a file or module
+- `/code-style` — cross-language baseline (TS / formatting / naming / errors / whitespace). Frontend specifics live in `/css` and `/react`.
+- `/css` — Tailwind 4 + shadcn, design tokens, typography, layout (flex first, grid only for genuine 2D), recurring visual patterns
+- `/react` — SPA module structure (`modules/<feature>/`), file-based routing, TanStack Query + the `api` wrapper, error UX, component patterns
 - `/database` — schema, prefixed entity IDs, migrations, FK/cascade rules, the `audit_log` table conventions
-- `/auth` — better-auth wiring, session vs JWT, route paths, `additionalFields`, CSRF/origin, env vars
-- `/infra` — AWS CDK stack design, deploy order, secrets, security groups, common failure patterns
+- `/auth` — better-auth wiring, `staffRole` + `requireStaff`, bootstrap mechanism, session vs JWT, `additionalFields`, CSRF/origin, env vars
+- `/infra` — AWS CDK stack design, deploy order, secrets, security groups, SPA hosting (CloudFront + S3 OAC), the `workflow_dispatch` one-shot sibling pattern, common failure patterns
 - `/git-workflow` — branching, hooks, PR, destructive-op rules
 
 The skill files are the durable conventions. When you're about to add a new pattern (a column, a route, a CDK resource), read the relevant skill first.

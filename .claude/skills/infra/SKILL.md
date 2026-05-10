@@ -10,8 +10,8 @@ Read the existing infrastructure code first, then work through the following.
 Split by lifecycle, not by resource type:
 
 - `${product}-${env}-network` — VPC, subnets, NAT gateway(s), security groups. Rarely changes.
-- `${product}-${env}-data` — RDS, ElastiCache Redis, ECR, Secrets Manager, S3 (uploads), **ECS cluster, migrator task definition**. Long-lived; deploys infrequently.
-- `${product}-${env}-app` — ECS services (api + worker), ALB, CloudFront, Route53, ACM. Deploys frequently.
+- `${product}-${env}-data` — RDS, ElastiCache Redis, ECR, Secrets Manager, S3 (uploads), **ECS cluster**, **one-off task definitions** (migrator, bootstrap-staff, future seed/backfill tasks). Long-lived; deploys infrequently.
+- `${product}-${env}-app` — ECS services (api + worker), ALB, per-SPA S3 buckets + CloudFront distributions, Route53, ACM. Deploys frequently.
 
 ECR lives in `data` because the image must exist before `app`'s ECS service can start. The **ECS cluster also lives in `data`** so the migration one-off task can run before `app` deploys; services in `app` import the cluster via cross-stack ref. Secrets live in `data` for the same reason — they must be populated before `app` deploys.
 
@@ -27,6 +27,33 @@ Subsequent deploys: push image → CI orchestrates an ECS rolling update. CDK ru
 **Migrations**
 
 Run Prisma `migrate deploy` as an **ECS one-off task** before the API rolling update. Never at container startup — it causes boot storms when ECS scales out, and a slow migration fails healthchecks.
+
+**One-shot ops (the `workflow_dispatch` sibling pattern)**
+
+Anything that runs **once per environment spin-up** rather than once per deploy — bootstrapping the first staff user, seeding test data, backfilling a column — gets its own `workflow_dispatch`-only GitHub Actions workflow that calls `aws ecs run-task` against a dedicated Fargate task definition. Don't bake one-off ops into the deploy DAG, into container startup, or into long-lived env vars.
+
+The pattern looks like the `migrator`:
+
+- A Fargate task definition in the `data` stack, sharing the API image, with a per-task CMD overriding the container entrypoint (e.g. `['node', 'dist/scripts/bootstrap-staff.js']`).
+- Per-task CloudWatch log group (`/ecs/${product}-${env}-<purpose>`) so failures are easy to find.
+- DB secrets + any app secrets the task actually needs, injected the same way the API service receives them.
+- An empty `environment:` block for any creds that should appear at trigger time only — those arrive as **runtime env overrides** in the workflow's `aws ecs run-task --overrides` payload, never as values stored on the task def or in Secrets Manager.
+- The workflow uses `add-mask` for sensitive inputs and tails the task's log group on a non-zero exit.
+
+The current example is `bootstrap-staff` (see `infra/cdk/lib/data-stack.ts` and `.github/workflows/bootstrap-staff.yml`). New one-shot tasks should mirror that file layout.
+
+**SPA hosting (CloudFront + S3 with OAC)**
+
+SPAs (`apps/internal` is the first; `apps/web`, `apps/portal` follow the same pattern) are served from a private S3 bucket fronted by CloudFront using **Origin Access Control** (the modern replacement for OAI). The bucket has `BLOCK_ALL` public access, server-side encryption, and a bucket policy that only allows the CloudFront distribution's source ARN.
+
+The CloudFront distribution carries two origins:
+
+- **S3 origin** (default behaviour, `CACHING_OPTIMIZED`) — serves the SPA bundle. Vite's hashed assets are sync'd with `Cache-Control: public, max-age=31536000, immutable`; `index.html` gets `no-cache, must-revalidate` so the SPA shell ships on the next request after deploy.
+- **ALB origin** (`/api/*` behaviour, `CACHING_DISABLED`, `ALL_VIEWER_EXCEPT_HOST_HEADER` policy) — forwards cookies + auth headers to the API task. The "except host header" matters: stripping `Host` lets the ALB resolve to the right target group; keeping cookies + `Authorization` lets the session round-trip.
+
+A custom error response maps `404` and `403` from S3 to `200 /index.html` so client-side routing works (TanStack Router resolves the path on load).
+
+The deploy step (in CI) does a two-pass S3 sync — long-cache + immutable for everything except `index.html`, then a separate copy of `index.html` with `no-cache` — followed by a CloudFront invalidation of `/` + `/index.html`. Hashed assets never need invalidation; the shell does.
 
 **Secrets**
 
