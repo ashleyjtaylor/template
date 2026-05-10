@@ -40,7 +40,7 @@ afterAll(async () => {
 
 describe('GET /api/audit-log', () => {
   it('should return 200 with rows and a nextCursor for staff', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-list-staff')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
@@ -63,7 +63,7 @@ describe('GET /api/audit-log', () => {
   })
 
   it('should return 401 with no session', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
 
     const res = await app.request('/api/audit-log')
 
@@ -71,7 +71,7 @@ describe('GET /api/audit-log', () => {
   })
 
   it('should return 403 when authed but staffRole is null', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-403')
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
@@ -82,7 +82,7 @@ describe('GET /api/audit-log', () => {
   })
 
   it('should narrow results when filtered by action', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-filter')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
@@ -101,7 +101,7 @@ describe('GET /api/audit-log', () => {
   })
 
   it('should paginate via cursor without overlap', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-cursor')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
@@ -158,7 +158,7 @@ describe('GET /api/audit-log', () => {
 
 describe('GET /api/audit-log/:entityId', () => {
   it('should return 200 with the matching row for staff', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-detail')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
@@ -184,7 +184,7 @@ describe('GET /api/audit-log/:entityId', () => {
   })
 
   it('should return 404 for a missing entityId', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-detail-404')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
@@ -199,7 +199,7 @@ describe('GET /api/audit-log/:entityId', () => {
 
 describe('GET /api/audit-log/actions', () => {
   it('should return sorted unique action strings', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const email = uniqueEmail('audit-actions')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)

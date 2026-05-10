@@ -12,7 +12,7 @@ afterAll(async () => {
 
 describe('GET /health/ready (integration)', () => {
   it('should return 200 against a real Postgres with migrations applied', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
 
     const res = await app.request('/health/ready')
 

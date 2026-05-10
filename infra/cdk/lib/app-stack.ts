@@ -150,6 +150,11 @@ export class AppStack extends Stack {
       // `https://internal.<domain>`.
       environment: {
         NODE_ENV: 'production',
+        // APP_ENV (not NODE_ENV) is what tells the app which AWS environment
+        // it is running in — staging and production both want NODE_ENV=production
+        // for the runtime optimisations, so a separate signal is needed. See
+        // the APP_ENV comment in apps/api/src/env.ts.
+        APP_ENV: envName,
         PORT: String(APP_PORT),
         BETTER_AUTH_URL: `https://${distribution.distributionDomainName}`,
         CORS_ORIGINS: `https://${distribution.distributionDomainName}`
