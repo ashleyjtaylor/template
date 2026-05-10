@@ -123,7 +123,22 @@ export const handler: Handler = async (c) => {
 }
 ```
 
+In Hono handlers, bind the awaited value to a `const` before calling `c.json`. Don't inline the await — `c.json(await createUser(...))` is rejected style. The named bind documents what's being returned and keeps the value inspectable in a debugger.
+
 Tests follow the same shape (arrange / act / assert each separated by a blank line).
+
+**API module layering**
+
+Backend modules under `apps/api/src/modules/<feature>/` split into four files by role:
+
+- **`routes.ts`** — Hono route definitions. Zod-parses inputs, awaits the controller into a `const`, returns `c.json(result)`. **No Prisma imports, no business logic.** Throws `ValidationError` on schema failure; everything else is the controller's job.
+- **`controllers.ts`** — orchestration between validated input and services. Decodes/encodes wire shapes (e.g. cursors), combines service calls, shapes responses, decides 4xx semantics like 404-when-row-missing.
+- **`service.ts`** — every Prisma query plus any pure business logic (state-machine transitions, last-owner checks, transactional flows). Returns plain DB rows or domain values; knows nothing about HTTP.
+- **`schemas.ts`** — Zod input/output schemas + the small codec helpers attached to those wire shapes.
+
+Domain helpers (`permissions.ts`, `tokens.ts`, `events.ts`) sit alongside as needed.
+
+Even when a controller is a thin pass-through, keep the layer — consistency beats saving 2 lines on simple endpoints. On review, flag any `prisma.*` import inside `routes.ts`, or any Hono routing inside `service.ts`, as a layering violation.
 
 **Authz**
 

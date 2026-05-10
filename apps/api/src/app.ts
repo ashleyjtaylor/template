@@ -8,7 +8,7 @@ import { errorHandler } from '@/middleware/error-handler.js'
 import { healthReady } from '@/middleware/health-ready.js'
 import { requestId } from '@/middleware/request-id.js'
 import { requestLogger } from '@/middleware/request-logger.js'
-import { auditLogRoutes } from '@/routes/audit-log.js'
+import { auditLogRoutes } from '@/modules/audit-log/routes.js'
 
 export interface AppOptions {
   gitSha: string
