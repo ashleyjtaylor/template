@@ -1,11 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Check, Copy, FileQuestion } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ApiError, api } from '@/lib/api'
-import { type AuditLogRow, auditLogRowSchema, formatTsFull, splitAction } from '@/lib/audit-log'
+import { ApiError } from '@/lib/api'
+import { useAuditLogDetail } from '@/modules/audit-log/api'
+import type { AuditLogRow } from '@/modules/audit-log/schemas'
+import { formatTsFull, splitAction } from '@/modules/audit-log/utils'
 
 export const Route = createFileRoute('/audit_/$entityId')({
   component: AuditDetailPage
@@ -24,11 +25,7 @@ function AuditDetailPage() {
   const navigate = useNavigate()
   const shortId = entityId.slice(-8)
 
-  const event = useQuery({
-    queryKey: ['audit-log', entityId],
-    queryFn: () => api(`/api/audit-log/${entityId}`, auditLogRowSchema),
-    retry: (_count, err) => !(err instanceof ApiError && [401, 403, 404].includes(err.status))
-  })
+  const event = useAuditLogDetail(entityId)
 
   // 401 → bounce to /login
   useEffect(() => {

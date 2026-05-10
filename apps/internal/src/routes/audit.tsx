@@ -1,57 +1,22 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ChevronDown, Inbox, Loader2, RotateCcw } from 'lucide-react'
 import { type ReactNode, useEffect, useId } from 'react'
-import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ApiError, api } from '@/lib/api'
-import { type AuditLogRow, auditLogRowSchema, formatTsCompact, splitAction } from '@/lib/audit-log'
-
-// --- Schemas ---
-
-const auditLogListSchema = z.object({
-  rows: z.array(auditLogRowSchema),
-  nextCursor: z.string().nullable()
-})
-
-const auditLogActionsSchema = z.object({
-  actions: z.array(z.string())
-})
-
-// Search params kept as datetime-local strings (browser-tz) for direct binding
-// to <input type="datetime-local">. Converted to ISO at the API call site so
-// the server gets timezone-anchored values.
-const searchSchema = z.object({
-  action: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
-  requestId: z.string().optional()
-})
-
-type Search = z.infer<typeof searchSchema>
-
-// --- Route ---
+import { ApiError } from '@/lib/api'
+import { useAuditLogActions, useAuditLogList } from '@/modules/audit-log/api'
+import {
+  type AuditLogRow,
+  type AuditLogSearch,
+  auditLogSearchSchema
+} from '@/modules/audit-log/schemas'
+import { formatTsCompact, splitAction } from '@/modules/audit-log/utils'
 
 export const Route = createFileRoute('/audit')({
-  validateSearch: searchSchema,
+  validateSearch: auditLogSearchSchema,
   component: AuditPage
 })
-
-// --- Helpers ---
-
-const buildQuery = (search: Search, cursor?: string): string => {
-  const params = new URLSearchParams()
-
-  if (search.action) params.set('action', search.action)
-  if (search.from) params.set('from', new Date(search.from).toISOString())
-  if (search.to) params.set('to', new Date(search.to).toISOString())
-  if (search.requestId) params.set('requestId', search.requestId)
-  if (cursor) params.set('cursor', cursor)
-
-  return params.toString()
-}
 
 const friendlyError = (err: unknown): string => {
   if (err instanceof ApiError && err.status >= 500) {
@@ -61,8 +26,6 @@ const friendlyError = (err: unknown): string => {
   return 'Could not load audit events. Try again.'
 }
 
-// --- Page ---
-
 function AuditPage() {
   const search = Route.useSearch()
   const navigate = useNavigate()
@@ -71,23 +34,8 @@ function AuditPage() {
   const toId = useId()
   const reqIdId = useId()
 
-  const list = useInfiniteQuery({
-    queryKey: ['audit-log', search],
-    queryFn: ({ pageParam }) => {
-      const qs = buildQuery(search, pageParam)
-      const path = qs ? `/api/audit-log?${qs}` : '/api/audit-log'
-
-      return api(path, auditLogListSchema)
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined
-  })
-
-  const actions = useQuery({
-    queryKey: ['audit-log-actions'],
-    queryFn: () => api('/api/audit-log/actions', auditLogActionsSchema),
-    staleTime: 5 * 60_000
-  })
+  const list = useAuditLogList(search)
+  const actions = useAuditLogActions()
 
   // 401 means no session — bounce to /login.
   useEffect(() => {
@@ -96,7 +44,7 @@ function AuditPage() {
     }
   }, [list.error, navigate])
 
-  const updateFilter = (patch: Partial<Search>) => {
+  const updateFilter = (patch: Partial<AuditLogSearch>) => {
     navigate({
       to: '/audit',
       search: (prev) => {

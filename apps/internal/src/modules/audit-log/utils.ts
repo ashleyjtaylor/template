@@ -1,23 +1,3 @@
-import { z } from 'zod'
-
-// Wire shape returned by /api/audit-log and /api/audit-log/:entityId.
-// Single source of truth — both the list and detail routes import this.
-export const auditLogRowSchema = z.object({
-  entityId: z.string(),
-  createdAt: z.string(),
-  action: z.string(),
-  actorUser: z.object({ entityId: z.string(), email: z.string() }).nullable(),
-  actorImpersonator: z.object({ entityId: z.string(), email: z.string() }).nullable(),
-  resourceType: z.string().nullable(),
-  resourceId: z.string().nullable(),
-  ipAddress: z.string().nullable(),
-  userAgent: z.string().nullable(),
-  requestId: z.string().nullable(),
-  details: z.unknown()
-})
-
-export type AuditLogRow = z.infer<typeof auditLogRowSchema>
-
 const compactTsFormatter = new Intl.DateTimeFormat('en-GB', {
   year: '2-digit',
   month: 'short',
