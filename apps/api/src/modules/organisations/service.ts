@@ -74,6 +74,9 @@ export const getMembership = async (orgId: string, userId: string): Promise<Memb
     where: { organisationId_userId: { organisationId: orgId, userId } }
   })
 
+export const getOrgById = async (orgId: string): Promise<Organisation | null> =>
+  prisma.organisation.findUnique({ where: { entityId: orgId } })
+
 export const listMyOrgs = async (userId: string) => {
   const memberships = await prisma.membership.findMany({
     where: { userId },
