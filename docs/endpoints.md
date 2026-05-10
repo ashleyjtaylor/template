@@ -4,6 +4,11 @@ Per-route documentation for everything the API exposes — request/response shap
 
 Read alongside `system-design.md` (the deployed topology) and `.claude/memory/project_overview.md` (the design intent).
 
+## Path conventions
+
+- All application routes live under `/api/*`. CloudFront forwards only that prefix to the ALB; the SPA bundle is served from the same distribution at `/`.
+- Health checks are the exception — `/health` and `/health/ready` stay un-prefixed because the ALB target-group health check hits the ALB DNS directly (CloudFront does not front them) and `/health` is also the canonical route external uptime monitors poll.
+
 ## `/health`
 
 Liveness probe used by the ALB. No DB dependency.
@@ -47,22 +52,34 @@ sequenceDiagram
 
 Failures here do **not** pull tasks out of rotation — ALB only watches `/health`. A flaky readiness probe surfaces in the monitoring dashboard rather than blackholing traffic.
 
-## `/auth/*`
+## `/api/auth/*`
 
 Better-auth-mounted routes. Self-hosted email + password auth with DB-backed cookie sessions.
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/auth/sign-up/email` | POST | Create user, set session cookie |
-| `/auth/sign-in/email` | POST | Validate credentials, set session cookie |
-| `/auth/sign-out` | POST | Delete session row, clear cookie (requires `Origin` header — better-auth's CSRF check) |
-| `/auth/get-session` | GET | Return `{ user, session }` if cookie valid, else `null` (always 200) |
+| `/api/auth/sign-up/email` | POST | Create user, set session cookie |
+| `/api/auth/sign-in/email` | POST | Validate credentials, set session cookie |
+| `/api/auth/sign-out` | POST | Delete session row, clear cookie (requires `Origin` header — better-auth's CSRF check) |
+| `/api/auth/get-session` | GET | Return `{ user, session }` if cookie valid, else `null` (always 200) |
 
-Mounted via `app.on(['POST', 'GET'], '/auth/*', (c) => auth.handler(c.req.raw))`. better-auth signs cookies with `BETTER_AUTH_SECRET` (Secrets Manager → ECS env var); `BETTER_AUTH_URL` (CDK-injected ALB DNS) is the canonical base URL it uses for OAuth callbacks and email links. Sessions persist in the `session` table; auth credentials in `account.password` (scrypt, JS-native, no separate hashing service).
+Mounted via `app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw))` with `basePath: '/api/auth'` on the better-auth config. better-auth signs cookies with `BETTER_AUTH_SECRET` (Secrets Manager → ECS env var); `BETTER_AUTH_URL` (CDK-injected CloudFront URL in production, ALB DNS for the API task before CloudFront fronted) is the canonical base URL it uses for OAuth callbacks and email links. Sessions persist in the `session` table; auth credentials in `account.password` (scrypt, JS-native, no separate hashing service).
 
 Each row in `user`/`session`/`account`/`verification` carries a prefixed `entity_id` (`usr_…`, `sess_…`, etc.) and the `request_id` of the HTTP request that created it. Auth lifecycle events (signup, login, logout) write rows to the `audit_log` table via better-auth's `databaseHooks.<model>.<event>.after`, awaited but error-swallowed (best-effort) — see the audit-log section of the `database` skill for the action union, write path, and retention rules.
 
 Email verification, OAuth providers, password reset, magic link, 2FA, organisations, and rate limiting all defer to follow-up PRs.
+
+## `/api/audit-log/*`
+
+Read-only views over the `audit_log` table. Gated by the `requireStaff` middleware (`apps/api/src/middleware/require-staff.ts`) — every route returns **401** without a session cookie and **403** for an authenticated user whose `staffRole` is `null`. Powered by `apps/internal`; no other consumer today.
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/audit-log` | GET | Paginated event list. Filters: `action`, `from`, `to`, `requestId`. Cursor pagination via `nextCursor`. |
+| `/api/audit-log/actions` | GET | Distinct list of action strings present in the table — feeds the dropdown in the SPA filter bar. |
+| `/api/audit-log/:entityId` | GET | Single event by `aud_…` entityId. **404** if the row does not exist. |
+
+Each row response includes `actorUser` (joined from `User` by `actorUserId`) and `actorImpersonator` (when set). The `details` JSON column is returned as-is — see the `database` skill for what is and isn't safe to put there.
 
 ### Status code deviations from typical REST
 

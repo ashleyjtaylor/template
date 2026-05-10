@@ -12,6 +12,31 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-10 — `apps/internal` SPA + audit-log read API + staff bootstrap
+
+- **Branch / PR**: `feat/internal-app-audit-log`
+- **Plan**: `docs/tickets/07-internal-app-and-audit-log.md`
+- **What landed**:
+  - **Auth route prefix migration** — every application route now mounts under `/api/*`. better-auth runs at `/api/auth/*` (`basePath: '/api/auth'`), audit-log routes at `/api/audit-log/*`, `/health` + `/health/ready` stay un-prefixed (ALB target group hits them on the ALB DNS, CloudFront does not front them).
+  - **`staffRole` column on `User`** (nullable string, `'support' | 'engineer' | 'admin'`). Wired via better-auth `additionalFields` with `input: false` so the auth API can never set it — promotion only goes through the bootstrap script. `requireStaff` middleware (`apps/api/src/middleware/require-staff.ts`) resolves the session, narrows the user shape, throws 401 / 403 as appropriate, and writes the resolved staff session to the Hono context.
+  - **Audit-log read API** — `GET /api/audit-log` (filter + cursor pagination), `GET /api/audit-log/actions` (distinct list for the filter dropdown), `GET /api/audit-log/:entityId`. All gated by `requireStaff`.
+  - **`apps/internal` scaffolded and deployed** — Vite + React 19 + TanStack Router (file-based) + TanStack Query + Tailwind 4 + shadcn (new-york + neutral). Login page (POST `/api/auth/sign-in/email`), audit-log list with filters and infinite-scroll pagination, audit-log detail with JSON viewer + copy + cross-link back to the list filtered by `requestId`. Trailing-underscore route opt-out (`audit_.$entityId.tsx`) keeps detail flat-sibling of the list rather than nested.
+  - **CloudFront + S3 (OAC) for the SPA** — private bucket fronted by a CloudFront distribution. Default behaviour serves the SPA from S3 (`CACHING_OPTIMIZED`); `/api/*` behaviour forwards to the ALB (`CACHING_DISABLED`, `ALL_VIEWER_EXCEPT_HOST_HEADER`). 404/403 from S3 → return `index.html` 200 for SPA routing. `BETTER_AUTH_URL` and `CORS_ORIGINS` swap from ALB DNS → CloudFront URL on the API task env.
+  - **CI deploy DAG extended** — new `build-internal-app` job runs in parallel with `build-image`. `deploy-app` downloads the bundle, two-pass-syncs to S3 (long-cache + immutable for hashed assets, `no-cache` for `index.html`), then invalidates `/` + `/index.html` on CloudFront. The smoke step now hits both ALB `/health` and the CloudFront URL.
+  - **`bootstrap-staff` one-off task + workflow** — `apps/api/src/scripts/bootstrap-staff.ts` (compiled into the API image, invoked as `node dist/scripts/bootstrap-staff.js` on the dedicated Fargate task definition). Idempotent: creates via `auth.api.signUpEmail` if missing, then `prisma.user.update({ staffRole })`; on re-run for an existing user, promotes role only — never touches the password. The `bootstrap-staff` GitHub Actions workflow (`workflow_dispatch` only) passes `BOOTSTRAP_STAFF_*` as runtime env overrides on `aws ecs run-task` so bootstrap creds never get baked into the task def or Secrets Manager.
+  - **Docs catch-up** — `docs/system-design.md` (topology + deploy-flow + bootstrap-staff sibling), `docs/endpoints.md` (path conventions, `/api/auth/*` rename, audit-log section), `docs/runbooks/local-dev.md` (running the SPA + bootstrap section), new `docs/runbooks/staff-bootstrap.md` runbook. Skills updated: `auth` (route prefix, staffRole + requireStaff section, bootstrap mechanism), `database` (audit-log read API note), `infra` (one-shot ops `workflow_dispatch` sibling pattern, SPA hosting via CloudFront + S3 OAC).
+- **What's now possible**:
+  - Real staff workflow end-to-end: trigger the bootstrap workflow → log into the deployed `apps/internal` → inspect every signup / login / logout event with full filter + detail.
+  - Future internal routes layer on `requireStaff` as positional middleware; no per-route auth boilerplate beyond a single import.
+  - Future SPAs (`apps/web`, `apps/portal`) follow the same per-app S3 bucket + CloudFront distribution pattern, each with its own `build-<name>-app` CI job.
+  - One-shot operations (seed, backfill, future audit-replay) follow the bootstrap-staff template: dedicated task def + `workflow_dispatch` workflow + runtime env overrides for any sensitive inputs.
+- **Deferred** (explicit follow-ups):
+  - **Staff-management UI** — replaces the workflow_dispatch path for adding additional staff after bootstrap.
+  - **Customer organisations + DB-level invariant** (`staffRole != null` cannot also be a member of a customer org).
+  - **Impersonation** — needs the staff-management UI + a session-creation endpoint setting `actor_impersonator_id`. Audit-log column already exists.
+  - **API request log** (Stripe-style "every HTTP request stored") — separate observability feature.
+  - **`apps/web`** (customer SPA), forgot-password / email verification / magic link (need SES), OAuth providers, 2FA, real DNS (`internal.staging.acme.io`), Playwright E2E (lands when there's a second SPA worth it).
+
 ## 2026-05-09 — Audit log foundation (schema + write path)
 
 - **Branch / PR**: `feat/api-audit-log` (#31)
