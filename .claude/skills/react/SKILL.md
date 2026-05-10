@@ -47,6 +47,16 @@ apps/<spa>/src/
 - Hooks live in `modules/<feature>/api.ts` as factories: `useAuditLogList(search)`, `useAuditLogDetail(entityId)`. Routes call the hook, not `useQuery` directly.
 - **Schemas live in `modules/<feature>/schemas.ts`** with their inferred types as siblings (`export type AuditLogRow = z.infer<typeof auditLogRowSchema>`). One file is the source of truth for both the validator and the type.
 
+## Global layout + auth gate
+
+`__root.tsx` owns the cross-page chrome (sidebar, header, modals) and the auth gate. One pattern, one place:
+
+- **Sidebar / chrome** lives in `components/layout/{Sidebar,NavItem,EnvBadge,UserMenu}.tsx`. Cross-feature, mounted at the root.
+- **AuthGate** is a single component inside `__root.tsx` that calls `useSession()` once and runs all redirect logic — unauthed → `/login`, signed-in-on-`/login` → `/`. Renders `null` while the session query is loading or while the redirect effect is mid-flight, so the user never flashes a protected page or login screen before the redirect lands.
+- **Per-page 401 `useEffect`s are not needed** once the root gate exists; delete them. The gate is the single redirect path; `useSession()`'s `refetchOnWindowFocus: true` catches mid-session expiry on tab refocus.
+- **Unauthed routes** (today: `/login`) opt out by listing in a `UNAUTHED_PATHS` `Set` in `__root.tsx`. The gate skips redirecting on those, and the layout renders a bare `<Outlet />` instead of the sidebar.
+- **Global providers** (theme, query client) live at `main.tsx`, wrapping `<RouterProvider />`. `__root.tsx` is the *layout* root; `main.tsx` is the *provider* root.
+
 ## Error UX
 
 Every page handles four error classes consistently. `ApiError.status` discriminates:

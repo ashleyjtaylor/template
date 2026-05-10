@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db.js'
 import { logger } from '@/lib/logger.js'
 import { registerShutdown } from '@/lib/shutdown.js'
 
-const app = createApp({ gitSha: env.GIT_SHA })
+const app = createApp({ gitSha: env.GIT_SHA, appEnv: env.APP_ENV })
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   logger.info({ port: info.port }, 'api listening')

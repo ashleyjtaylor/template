@@ -72,10 +72,12 @@ If you can write the layout as flex without losing the visual, do so. Reaching f
 When building a new SPA page, consider these patterns first instead of inventing equivalents:
 
 - **Engineering dot-grid backdrop** — `pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_1px_1px,_var(--foreground)_1px,_transparent_0)] [background-size:24px_24px]` plus top + bottom 32px gradient fades to background. Keeps pages from feeling flat without resorting to imagery.
-- **Single-pixel accent lines** — `absolute -top-px right-6 left-6 h-px bg-gradient-to-r from-transparent via-foreground/30 to-transparent` for a card edge; `absolute inset-y-4 left-0 w-px bg-gradient-to-b ...` for a "this is the inspected event" left-edge cue. Quiet, not decorative.
+- **Single-pixel accent lines** — `absolute -top-px right-6 left-6 h-px bg-linear-to-r from-transparent via-foreground/30 to-transparent` for a card edge; `absolute inset-y-4 left-0 w-px bg-linear-to-b ...` for a "this is the inspected event" left-edge cue. Quiet, not decorative.
 - **Small-caps utility labels** — `text-[10px] font-medium uppercase text-muted-foreground`. Used for column headers, field labels, status callouts. No tracking.
 - **Card composition** — `rounded-lg border bg-card/60 shadow-xs`. Slight transparency on the card so the dot-grid bleeds through subtly.
 - **Focus rings** — always `focus-visible:` (keyboard only), never `focus:` (sticky on click). Pair with `outline-none` to remove the browser default.
+- **Status dot pills** — `<span aria-hidden className="size-1.5 rounded-full bg-{color}" />` next to a small-caps label. Used in the env+SHA badge (`prod=destructive`, `staging=yellow-500`, `dev=emerald-500`). One pixel of colour reads faster than a coloured background.
+- **Tailwind 4 canonical class names** — prefer the new short names (`bg-linear-to-r`, `data-disabled:*`, integer spacing like `w-27.5`) over the legacy `bg-gradient-to-r` / `data-[disabled]:*` / `w-[110px]` arbitrary forms. The IDE Tailwind extension flags them; fix on touch.
 
 ## What not to do
 

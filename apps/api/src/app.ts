@@ -12,12 +12,14 @@ import { auditLogRoutes } from '@/routes/audit-log.js'
 
 export interface AppOptions {
   gitSha: string
+  appEnv: 'development' | 'staging' | 'production'
   corsOrigins?: string[]
   bodyLimitBytes?: number
 }
 
 export function createApp({
   gitSha,
+  appEnv,
   corsOrigins = env.CORS_ORIGINS,
   bodyLimitBytes = env.BODY_LIMIT_BYTES
 }: AppOptions) {
@@ -34,6 +36,7 @@ export function createApp({
     c.json({
       status: 'ok',
       version: gitSha,
+      env: appEnv,
       uptime: Math.floor((Date.now() - startedAt) / 1000)
     })
   )

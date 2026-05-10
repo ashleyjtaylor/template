@@ -8,8 +8,8 @@ afterEach(() => {
 })
 
 describe('GET /health', () => {
-  it('should return 200 with status, the configured version, and a numeric uptime', async () => {
-    const app = createApp({ gitSha: 'test-sha' })
+  it('should return 200 with status, the configured version, the env, and a numeric uptime', async () => {
+    const app = createApp({ gitSha: 'test-sha', appEnv: 'development' })
 
     const res = await app.request('/health')
 
@@ -17,23 +17,33 @@ describe('GET /health', () => {
     expect(await res.json()).toEqual({
       status: 'ok',
       version: 'test-sha',
+      env: 'development',
       uptime: expect.any(Number)
     })
   })
 
   it('should echo whatever gitSha the factory is given', async () => {
-    const app = createApp({ gitSha: 'unknown' })
+    const app = createApp({ gitSha: 'unknown', appEnv: 'development' })
 
     const res = await app.request('/health')
     const body = (await res.json()) as { version: string }
 
     expect(body.version).toBe('unknown')
   })
+
+  it('should echo whatever appEnv the factory is given', async () => {
+    const app = createApp({ gitSha: 'test-sha', appEnv: 'staging' })
+
+    const res = await app.request('/health')
+    const body = (await res.json()) as { env: string }
+
+    expect(body.env).toBe('staging')
+  })
 })
 
 describe('error handling', () => {
   it('should format HttpError subclasses with the right status and code', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     app.get('/test/not-found', () => {
       throw new NotFoundError('user missing')
     })
@@ -48,7 +58,7 @@ describe('error handling', () => {
   })
 
   it('should scrub unhandled error messages and return 500', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     app.get('/test/boom', () => {
       throw new Error('secret database url leak')
     })
@@ -67,7 +77,7 @@ describe('error handling', () => {
 
 describe('request id', () => {
   it('should set X-Request-Id with a req_ prefix on every response', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
 
     const res = await app.request('/health')
     const id = res.headers.get('x-request-id')
@@ -78,7 +88,7 @@ describe('request id', () => {
 
 describe('security headers', () => {
   it('should set sane defaults on every response', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
 
     const res = await app.request('/health')
 
@@ -91,6 +101,7 @@ describe('cors', () => {
   it('should allow preflight from a configured origin', async () => {
     const app = createApp({
       gitSha: 'test',
+      appEnv: 'development',
       corsOrigins: ['https://app.example.com']
     })
 
@@ -108,6 +119,7 @@ describe('cors', () => {
   it('should omit CORS headers from disallowed origins', async () => {
     const app = createApp({
       gitSha: 'test',
+      appEnv: 'development',
       corsOrigins: ['https://app.example.com']
     })
 
@@ -125,7 +137,7 @@ describe('cors', () => {
 
 describe('body limit', () => {
   it('should reject oversized bodies with 413', async () => {
-    const app = createApp({ gitSha: 'test', bodyLimitBytes: 100 })
+    const app = createApp({ gitSha: 'test', appEnv: 'development', bodyLimitBytes: 100 })
     app.post('/test/echo', (c) => c.json({ ok: true }))
 
     const body = 'x'.repeat(200)
@@ -146,7 +158,7 @@ describe('body limit', () => {
 
 describe('request logger', () => {
   it('should not log /health requests', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger)
 
     await app.request('/health')
@@ -156,7 +168,7 @@ describe('request logger', () => {
   })
 
   it('should log non-/health requests with method, path, status, and duration', async () => {
-    const app = createApp({ gitSha: 'test' })
+    const app = createApp({ gitSha: 'test', appEnv: 'development' })
     app.get('/test/anything', (c) => c.json({}))
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger)
 
