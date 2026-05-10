@@ -7,22 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError, api } from '@/lib/api'
+import { type AuditLogRow, auditLogRowSchema, formatTsCompact, splitAction } from '@/lib/audit-log'
 
 // --- Schemas ---
-
-const auditLogRowSchema = z.object({
-  entityId: z.string(),
-  createdAt: z.string(),
-  action: z.string(),
-  actorUser: z.object({ entityId: z.string(), email: z.string() }).nullable(),
-  actorImpersonator: z.object({ entityId: z.string(), email: z.string() }).nullable(),
-  resourceType: z.string().nullable(),
-  resourceId: z.string().nullable(),
-  ipAddress: z.string().nullable(),
-  userAgent: z.string().nullable(),
-  requestId: z.string().nullable(),
-  details: z.unknown()
-})
 
 const auditLogListSchema = z.object({
   rows: z.array(auditLogRowSchema),
@@ -44,7 +31,6 @@ const searchSchema = z.object({
 })
 
 type Search = z.infer<typeof searchSchema>
-type AuditLogRow = z.infer<typeof auditLogRowSchema>
 
 // --- Route ---
 
@@ -54,29 +40,6 @@ export const Route = createFileRoute('/audit')({
 })
 
 // --- Helpers ---
-
-const tsFormatter = new Intl.DateTimeFormat('en-GB', {
-  year: '2-digit',
-  month: 'short',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false
-})
-
-const formatTs = (iso: string) => tsFormatter.format(new Date(iso))
-
-// 'user.signed_up' → { ns: 'user.', verb: 'signed_up' }
-// 'org.member.invited' → { ns: 'org.member.', verb: 'invited' }
-// 'login' → { ns: '', verb: 'login' }
-const splitAction = (action: string): { ns: string; verb: string } => {
-  const idx = action.lastIndexOf('.')
-
-  if (idx === -1) return { ns: '', verb: action }
-
-  return { ns: action.slice(0, idx + 1), verb: action.slice(idx + 1) }
-}
 
 const buildQuery = (search: Search, cursor?: string): string => {
   const params = new URLSearchParams()
@@ -352,7 +315,7 @@ function RowItem({
       className="grid grid-cols-[180px_minmax(180px,1fr)_minmax(220px,1.4fr)_minmax(160px,1fr)_120px] items-center gap-4 border-b px-4 py-3 text-sm transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
     >
       <div className="font-mono text-xs text-muted-foreground tabular-nums">
-        {formatTs(row.createdAt)}
+        {formatTsCompact(row.createdAt)}
       </div>
       <div className="font-mono text-xs">
         <span className="text-muted-foreground/60">{ns}</span>
