@@ -180,7 +180,7 @@ Extend the existing typed `AuditEvent` union in `src/modules/audit-log/events.ts
 
 ## Module layout
 
-Following the route → controller → service layering established by the audit-log module refactor (no Prisma in route files; routes do Zod validation only; controllers orchestrate; services own DB + business logic):
+Following the route → controller → service layering established by the audit-log module refactor (no Prisma in route files; routes do Zod validation only; controllers orchestrate; services own DB + business logic). HTTP-level auth middleware lives in `src/middleware/` alongside `require-staff.ts` — never inside a feature module.
 
 ```
 apps/api/src/modules/organisations/
@@ -188,18 +188,27 @@ apps/api/src/modules/organisations/
   controllers.ts   — Orchestration between validated inputs and services. Combines service calls,
                      shapes responses, decides 4xx semantics (e.g. 404 vs found, alreadyMember branch).
   service.ts       — Prisma queries + business logic: createOrg, addMember, changeRole, last-owner
-                     check, invite token issuance, the transactional accept flow.
-  permissions.ts   — requireMember / requireAdmin / requireOwner (Hono middleware-style; loads
-                     membership and gates by role).
+                     check (`wouldStillHaveOwner` exported pure helper), invite token issuance,
+                     the transactional accept flow.
   schemas.ts       — Zod input/output schemas.
   tokens.ts        — generateInviteToken, hashToken (sha256). Pure helpers, no I/O.
+
+apps/api/src/middleware/
+  require-session.ts   — `requireSession` Hono middleware. Loads better-auth session, stashes on
+                         context as `authSession`. Throws 401 on missing/invalid. Reusable across
+                         any authed route, not org-specific.
+  require-org-role.ts  — `requireMember` / `requireAdmin` / `requireOwner` middlewares. Each reads
+                         `:orgId`, loads the caller's membership via service.getMembership, gates
+                         by role, stashes both `authSession` and `orgMembership` on context.
+                         Returns 404 for "org doesn't exist OR caller isn't a member" (no
+                         enumeration), 403 for "is a member but lacks role".
 ```
 
 Two `Hono` instances exported from `routes.ts` — `orgRoutes` (mounted at `/api/orgs`) and `invitationAcceptRoutes` (mounted at `/api/invitations`) — wired in `src/app.ts`.
 
-Audit events stay centralised in `modules/audit-log/events.ts` (single discriminated union) so `writeAudit` keeps exhaustive type checking. Orgs module imports `writeAudit` from `audit-log/service.ts`.
+Audit events stay centralised in `modules/audit-log/events.ts` (single discriminated union) so `writeAudit` keeps exhaustive type checking. Orgs module imports `writeAudit` from `audit-log/service.ts`. Middleware imports `getMembership` from the orgs service; the orgs service does **not** import from middleware (preserves the layering — services are HTTP-agnostic).
 
-`assertCan(membership, action)` / `packages/auth` extraction is **not done in this PR** — role checks live in `permissions.ts` as small helpers. Lifts to `packages/auth` at the second consumer (worker), per the package-extraction rule.
+`assertCan(membership, action)` / `packages/auth` extraction is **not done in this PR** — role checks live in the two middleware files as small helpers. Lifts to `packages/auth` at the second consumer (worker), per the package-extraction rule.
 
 ## Testing
 
@@ -207,7 +216,7 @@ Follows the established `apps/api/test/{unit,integration}/` layout, with `unit/m
 
 **Unit** (`test/unit/modules/organisations/`):
 
-- `permissions.test.ts` — pure last-owner check (given a list of memberships and a candidate mutation, does the result still have ≥1 owner?), positive + negative cases.
+- `service.test.ts` — pure `wouldStillHaveOwner` check exported from `service.ts` (given a list of memberships and a candidate mutation, does the result still have ≥1 owner?), positive + negative cases including the transfer-ownership swap.
 - `tokens.test.ts` — token generator produces 32 bytes / base64url; hash determinism (same raw → same hash; different raw → different hash); raw token is never reconstructible from the hash.
 
 **Integration** against the existing Postgres service container, one file per concern:
