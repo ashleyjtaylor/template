@@ -208,5 +208,50 @@ export class DataStack extends Stack {
       value: migratorLogGroup.logGroupName,
       description: 'Log group for the migrator task — tail this on failure'
     })
+
+    // One-shot Fargate task that creates / promotes a staff user. Invoked
+    // exclusively by .github/workflows/bootstrap-staff.yml via `aws ecs
+    // run-task` with `BOOTSTRAP_STAFF_*` env overrides — never on regular
+    // deploys, never with long-lived credentials baked in. Same image as the
+    // migrator so the script is just a different CMD.
+    const bootstrapStaffLogGroup = new LogGroup(this, 'BootstrapStaffLogs', {
+      logGroupName: `/ecs/${PRODUCT}-${envName}-bootstrap`,
+      retention: RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.DESTROY
+    })
+
+    const bootstrapStaffTaskDef = new FargateTaskDefinition(this, 'BootstrapStaffTask', {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      family: `${PRODUCT}-${envName}-bootstrap`
+    })
+
+    bootstrapStaffTaskDef.addContainer('bootstrap-staff', {
+      image: ContainerImage.fromEcrRepository(this.apiRepo, imageTag),
+      logging: LogDrivers.awsLogs({
+        logGroup: bootstrapStaffLogGroup,
+        streamPrefix: 'bootstrap-staff'
+      }),
+      environment: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info'
+      },
+      // DB to write the user; app secrets so better-auth can hash the password
+      // and run its create hooks. BETTER_AUTH_URL stays at the env.ts default
+      // (localhost) — this script never serves HTTP, so no callback URL is
+      // exercised. Bootstrap creds are NOT injected here; they arrive at
+      // run-task time as env overrides.
+      secrets: { ...this.dbSecrets, ...this.appSecrets },
+      command: ['node', 'dist/scripts/bootstrap-staff.js']
+    })
+
+    new CfnOutput(this, 'BootstrapStaffTaskDefArn', {
+      value: bootstrapStaffTaskDef.taskDefinitionArn,
+      description: 'Task definition ARN for the bootstrap-staff one-off task'
+    })
+    new CfnOutput(this, 'BootstrapStaffLogGroupName', {
+      value: bootstrapStaffLogGroup.logGroupName,
+      description: 'Log group for the bootstrap-staff task — tail this on failure'
+    })
   }
 }

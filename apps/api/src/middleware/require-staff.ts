@@ -23,10 +23,10 @@ export interface StaffSession {
   }
 }
 
-const STAFF_ROLES: ReadonlySet<StaffRole> = new Set(['support', 'engineer', 'admin'])
+export const STAFF_ROLES = ['support', 'engineer', 'admin'] as const satisfies readonly StaffRole[]
 
-const isStaffRole = (value: unknown): value is StaffRole =>
-  typeof value === 'string' && STAFF_ROLES.has(value as StaffRole)
+export const isStaffRole = (value: unknown): value is StaffRole =>
+  typeof value === 'string' && (STAFF_ROLES as readonly string[]).includes(value)
 
 // Pure resolver: throws UnauthorizedError (401) if no session,
 // ForbiddenError (403) if the session's user has no valid staff role.

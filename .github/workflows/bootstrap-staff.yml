@@ -1,0 +1,155 @@
+name: bootstrap-staff
+
+# One-shot creation / role-promotion of a staff user against a deployed env.
+# Triggered manually from the Actions tab — never on push, never on schedule.
+# Idempotent: re-running for the same email upgrades the staffRole if it
+# differs, otherwise no-ops. See docs/runbooks/staff-bootstrap.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options:
+          - staging
+        default: staging
+        required: true
+      email:
+        description: Staff user email
+        type: string
+        required: true
+      name:
+        description: Display name (e.g. "Ada Lovelace")
+        type: string
+        required: true
+      password:
+        description: Initial password (only used when the user does not exist; rotate after first login)
+        type: string
+        required: true
+      role:
+        description: Staff role
+        type: choice
+        options:
+          - support
+          - engineer
+          - admin
+        default: admin
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-staff:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Mask password from logs
+        env:
+          PASSWORD: ${{ inputs.password }}
+        # The input is already masked by the `password` field in the inputs
+        # block, but `add-mask` is the documented belt-and-braces step in case
+        # a later command echoes the literal value into output.
+        run: echo "::add-mask::$PASSWORD"
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          # Region must match `aws.region` in infra/cdk/lib/config.ts
+          aws-region: eu-west-1
+
+      - name: Resolve task def + cluster + network from CFN outputs
+        id: cfn
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+        run: |
+          set -e
+          TASK_DEF=$(aws cloudformation describe-stacks \
+            --stack-name "template-${ENV_NAME}-data" \
+            --query 'Stacks[0].Outputs[?OutputKey==`BootstrapStaffTaskDefArn`].OutputValue' \
+            --output text)
+          CLUSTER=$(aws cloudformation describe-stacks \
+            --stack-name "template-${ENV_NAME}-data" \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiClusterName`].OutputValue' \
+            --output text)
+          LOG_GROUP=$(aws cloudformation describe-stacks \
+            --stack-name "template-${ENV_NAME}-data" \
+            --query 'Stacks[0].Outputs[?OutputKey==`BootstrapStaffLogGroupName`].OutputValue' \
+            --output text)
+          SUBNETS=$(aws cloudformation describe-stacks \
+            --stack-name "template-${ENV_NAME}-network" \
+            --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnetIds`].OutputValue' \
+            --output text)
+          SG=$(aws cloudformation describe-stacks \
+            --stack-name "template-${ENV_NAME}-network" \
+            --query 'Stacks[0].Outputs[?OutputKey==`EcsSecurityGroupId`].OutputValue' \
+            --output text)
+          {
+            echo "task-def=$TASK_DEF"
+            echo "cluster=$CLUSTER"
+            echo "log-group=$LOG_GROUP"
+            echo "subnets=$SUBNETS"
+            echo "sg=$SG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run bootstrap-staff task and wait for completion
+        env:
+          TASK_DEF: ${{ steps.cfn.outputs.task-def }}
+          CLUSTER: ${{ steps.cfn.outputs.cluster }}
+          LOG_GROUP: ${{ steps.cfn.outputs.log-group }}
+          SUBNETS: ${{ steps.cfn.outputs.subnets }}
+          SG: ${{ steps.cfn.outputs.sg }}
+          STAFF_EMAIL: ${{ inputs.email }}
+          STAFF_NAME: ${{ inputs.name }}
+          STAFF_PASSWORD: ${{ inputs.password }}
+          STAFF_ROLE: ${{ inputs.role }}
+        # Build the run-task overrides JSON with `jq` so the inputs are
+        # quoted/escaped properly. Bootstrap creds ride in as runtime env
+        # overrides on the container — they are NEVER persisted on the task
+        # def (DataStack carries an empty env block for these vars on
+        # purpose). The container exits as soon as the script finishes.
+        run: |
+          set -eo pipefail
+          OVERRIDES=$(jq -n \
+            --arg email "$STAFF_EMAIL" \
+            --arg name "$STAFF_NAME" \
+            --arg password "$STAFF_PASSWORD" \
+            --arg role "$STAFF_ROLE" \
+            '{
+              containerOverrides: [{
+                name: "bootstrap-staff",
+                environment: [
+                  { name: "BOOTSTRAP_STAFF_EMAIL", value: $email },
+                  { name: "BOOTSTRAP_STAFF_NAME", value: $name },
+                  { name: "BOOTSTRAP_STAFF_PASSWORD", value: $password },
+                  { name: "BOOTSTRAP_STAFF_ROLE", value: $role }
+                ]
+              }]
+            }')
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$TASK_DEF" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SG}],assignPublicIp=DISABLED}" \
+            --overrides "$OVERRIDES" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          echo "Started task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::bootstrap-staff task exited with code $EXIT_CODE"
+            echo "--- Last 5 minutes of $LOG_GROUP ---"
+            aws logs tail "$LOG_GROUP" --since 5m || true
+            exit 1
+          fi
+          echo "bootstrap-staff task completed successfully"
