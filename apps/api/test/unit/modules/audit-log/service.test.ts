@@ -51,7 +51,8 @@ describe('writeAudit', () => {
       actorUserId: 'usr_a',
       resourceId: 'org_b',
       email: 'c@d.com',
-      role: 'admin'
+      role: 'admin',
+      invitationId: 'inv_xyz'
     })
 
     expect(create.mock.calls[0]?.[0].data).toMatchObject({
