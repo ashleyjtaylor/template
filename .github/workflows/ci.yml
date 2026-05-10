@@ -4,17 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Staging deploy is manual: trigger from the Actions tab when you want to
-  # spin staging back up. Push to main no longer auto-deploys, so doc/code
-  # merges don't unintentionally restart torn-down infra.
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Lock the GITHUB_TOKEN to least privilege by default. Deploy jobs override
-# per-job to add `id-token: write` for OIDC.
+# Lock the GITHUB_TOKEN to least privilege. This file only runs validation;
+# the deploy DAG (which needs OIDC) lives in deploy-staging.yml.
 permissions:
   contents: read
 
@@ -71,7 +67,7 @@ jobs:
       - name: Test
         run: pnpm test
 
-  cdk:
+  cdk-synth:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -112,9 +108,11 @@ jobs:
       - name: Lint commits
         run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
 
-  docker-build:
-    # Build the API image on PRs to catch Dockerfile breakage before it hits main.
-    # On push to main the `build-image` job covers this and pushes to ECR.
+  build-api-image:
+    # PR-only sanity build of the apps/api Docker image so a broken
+    # Dockerfile fails the PR. The deploy DAG re-runs this in
+    # deploy-staging.yml under the same job name, additionally pushing the
+    # image to ECR with a SHA tag.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -128,48 +126,13 @@ jobs:
             -t template-api:pr \
             .
 
-  deploy-infra:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [ci, cdk]
-    runs-on: ubuntu-latest
-    environment: staging
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: pnpm/action-setup@v6.0.5
-        with:
-          version: 11.0.8
-
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 24.15.0
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          # Region must match `aws.region` in infra/cdk/lib/config.ts
-          aws-region: eu-west-1
-
-      - name: Deploy network + data stacks
-        working-directory: infra/cdk
-        # Stack names must match `${PRODUCT}-${env}-*` from infra/cdk/lib/config.ts.
-        # `imageTag` is consumed by the migrator task def in DataStack so it
-        # references the image build-image is about to push.
-        run: pnpm exec cdk deploy template-staging-network template-staging-data --require-approval never -c imageTag=${{ github.sha }}
-
   build-internal-app:
-    # Builds the apps/internal SPA bundle in parallel with the API image.
-    # The artifact is consumed by deploy-app, which syncs it to the S3 origin
-    # behind CloudFront and invalidates the index.html cache entry. Each SPA
-    # gets its own job (build-web-app, build-portal-app, etc.) when scaffolded.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [deploy-infra]
+    # Sanity-build the apps/internal SPA bundle on PRs so a broken vite build
+    # fails the PR rather than only surfacing on the next staging deploy. The
+    # deploy DAG re-builds the bundle in deploy-staging.yml — keeping the two
+    # callers as siblings (rather than a reusable workflow_call) until a third
+    # caller justifies the indirection.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -187,295 +150,3 @@ jobs:
 
       - name: Build internal app
         run: pnpm --filter @template/internal build
-
-      - uses: actions/upload-artifact@v7.0.1
-        with:
-          name: internal-app
-          path: apps/internal/dist
-          if-no-files-found: error
-          retention-days: 7
-
-  build-image:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [deploy-infra]
-    runs-on: ubuntu-latest
-    environment: staging
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      image-tag: ${{ steps.tag.outputs.image-tag }}
-      image-uri: ${{ steps.tag.outputs.image-uri }}
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2.1.5
-
-      - id: tag
-        # Repo name must match `repositoryName` in infra/cdk/lib/data-stack.ts
-        run: |
-          TAG=${{ github.sha }}
-          URI=${{ steps.ecr.outputs.registry }}/template-staging-api:$TAG
-          echo "image-tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "image-uri=$URI" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push image
-        run: |
-          docker build \
-            --build-arg GIT_SHA=${{ github.sha }} \
-            -f apps/api/Dockerfile \
-            -t ${{ steps.tag.outputs.image-uri }} \
-            .
-          docker push ${{ steps.tag.outputs.image-uri }}
-
-  migrate-db:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [build-image]
-    runs-on: ubuntu-latest
-    environment: staging
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-
-      - name: Resolve task def + cluster + network from CFN outputs
-        id: cfn
-        run: |
-          set -e
-          TASK_DEF=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-data \
-            --query 'Stacks[0].Outputs[?OutputKey==`MigratorTaskDefArn`].OutputValue' \
-            --output text)
-          CLUSTER=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-data \
-            --query 'Stacks[0].Outputs[?OutputKey==`ApiClusterName`].OutputValue' \
-            --output text)
-          LOG_GROUP=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-data \
-            --query 'Stacks[0].Outputs[?OutputKey==`MigratorLogGroupName`].OutputValue' \
-            --output text)
-          SUBNETS=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-network \
-            --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnetIds`].OutputValue' \
-            --output text)
-          SG=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-network \
-            --query 'Stacks[0].Outputs[?OutputKey==`EcsSecurityGroupId`].OutputValue' \
-            --output text)
-          {
-            echo "task-def=$TASK_DEF"
-            echo "cluster=$CLUSTER"
-            echo "log-group=$LOG_GROUP"
-            echo "subnets=$SUBNETS"
-            echo "sg=$SG"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Run migrator task and wait for completion
-        env:
-          TASK_DEF: ${{ steps.cfn.outputs.task-def }}
-          CLUSTER: ${{ steps.cfn.outputs.cluster }}
-          LOG_GROUP: ${{ steps.cfn.outputs.log-group }}
-          SUBNETS: ${{ steps.cfn.outputs.subnets }}
-          SG: ${{ steps.cfn.outputs.sg }}
-        run: |
-          set -eo pipefail
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "$CLUSTER" \
-            --task-definition "$TASK_DEF" \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SG}],assignPublicIp=DISABLED}" \
-            --query 'tasks[0].taskArn' \
-            --output text)
-          echo "Started task: $TASK_ARN"
-
-          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
-
-          EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
-
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "::error::Migrator task exited with code $EXIT_CODE"
-            echo "--- Last 5 minutes of $LOG_GROUP ---"
-            aws logs tail "$LOG_GROUP" --since 5m || true
-            exit 1
-          fi
-          echo "Migrator task completed successfully"
-
-  deploy-app:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [migrate-db, build-internal-app]
-    runs-on: ubuntu-latest
-    environment: staging
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: pnpm/action-setup@v6.0.5
-        with:
-          version: 11.0.8
-
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 24.15.0
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-
-      - name: Deploy app stack
-        working-directory: infra/cdk
-        # `imageTag=${{ github.sha }}` matches what `build-image` tagged the
-        # image with (also `github.sha`). Don't use `needs.build-image.outputs`
-        # — those aren't reliably preserved when re-running an individual job,
-        # which silently produces an empty `imageTag` and a tagless image
-        # reference (Docker resolves to `:latest` which we never push).
-        run: |
-          pnpm exec cdk deploy template-staging-app \
-            --exclusively \
-            --require-approval never \
-            -c imageTag=${{ github.sha }}
-
-      - uses: actions/download-artifact@v8.0.1
-        with:
-          name: internal-app
-          path: apps/internal/dist
-
-      - name: Resolve SPA bucket + CloudFront distribution from CFN outputs
-        id: spa
-        run: |
-          set -e
-          BUCKET=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-app \
-            --query 'Stacks[0].Outputs[?OutputKey==`InternalSpaBucketName`].OutputValue' \
-            --output text)
-          DIST=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-app \
-            --query 'Stacks[0].Outputs[?OutputKey==`InternalSpaDistributionId`].OutputValue' \
-            --output text)
-          {
-            echo "bucket=$BUCKET"
-            echo "distribution=$DIST"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Sync SPA bundle to S3
-        env:
-          BUCKET: ${{ steps.spa.outputs.bucket }}
-        # Two-pass sync: hashed Vite assets get long cache + immutable so
-        # browsers / CloudFront keep them indefinitely; index.html gets no-cache
-        # so the SPA shell update ships on the next request after deploy. The
-        # CloudFront invalidation below covers any users with stale CDN caches.
-        run: |
-          aws s3 sync apps/internal/dist/ "s3://${BUCKET}/" \
-            --delete \
-            --exclude "index.html" \
-            --cache-control "public, max-age=31536000, immutable"
-
-          aws s3 cp apps/internal/dist/index.html "s3://${BUCKET}/index.html" \
-            --cache-control "no-cache, must-revalidate"
-
-      - name: Invalidate CloudFront cache for index.html
-        env:
-          DIST: ${{ steps.spa.outputs.distribution }}
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "$DIST" \
-            --paths "/" "/index.html"
-
-  smoke:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [deploy-app]
-    runs-on: ubuntu-latest
-    environment: staging
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-
-      - id: outputs
-        name: Resolve ALB DNS + CloudFront URL from CFN outputs
-        run: |
-          set -e
-          DNS=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-app \
-            --query 'Stacks[0].Outputs[?OutputKey==`AlbDnsName`].OutputValue' \
-            --output text)
-          SPA_URL=$(aws cloudformation describe-stacks \
-            --stack-name template-staging-app \
-            --query 'Stacks[0].Outputs[?OutputKey==`InternalSpaUrl`].OutputValue' \
-            --output text)
-          if [ -z "$DNS" ] || [ -z "$SPA_URL" ]; then
-            echo "Required outputs not found on template-staging-app (got dns='$DNS', spa='$SPA_URL')"
-            exit 1
-          fi
-          {
-            echo "dns=$DNS"
-            echo "spa-url=$SPA_URL"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Curl /health and verify version matches the deployed sha
-        env:
-          ALB_DNS: ${{ steps.outputs.outputs.dns }}
-          EXPECTED_SHA: ${{ github.sha }}
-        # /health hits the ALB direct (CloudFront only routes /api/*), so the
-        # smoke target stays the ALB DNS even now that CF fronts the SPA.
-        run: |
-          set -u
-          for i in $(seq 1 30); do
-            if RESPONSE=$(curl -fsS --max-time 5 "http://$ALB_DNS/health"); then
-              echo "attempt $i: $RESPONSE"
-              if echo "$RESPONSE" | jq -e --arg sha "$EXPECTED_SHA" '.status == "ok" and .version == $sha' > /dev/null; then
-                echo "API smoke test passed"
-                break
-              fi
-              echo "version mismatch — rolling update may still be in progress"
-            else
-              echo "attempt $i: /health not yet responding"
-            fi
-            sleep 10
-            if [ "$i" = "30" ]; then
-              echo "API smoke test failed after 30 attempts (5 minutes)"
-              exit 1
-            fi
-          done
-
-      - name: Curl CloudFront and verify index.html is served
-        env:
-          SPA_URL: ${{ steps.outputs.outputs.spa-url }}
-        # Asserts CloudFront serves the SPA shell (the bundle just synced to
-        # S3). Looks for the <div id="root"> Vite injects into index.html.
-        run: |
-          set -u
-          for i in $(seq 1 12); do
-            if BODY=$(curl -fsS --max-time 10 "$SPA_URL/"); then
-              if echo "$BODY" | grep -q 'id="root"'; then
-                echo "SPA smoke test passed"
-                exit 0
-              fi
-              echo "attempt $i: response did not contain id=\"root\""
-            else
-              echo "attempt $i: $SPA_URL not yet responding"
-            fi
-            sleep 10
-          done
-          echo "SPA smoke test failed after 12 attempts (2 minutes)"
-          exit 1

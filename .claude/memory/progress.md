@@ -12,6 +12,25 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-10 — CI workflow reorganisation (split deploy DAG, rename jobs)
+
+- **Branch / PR**: `chore/ci-reorg`
+- **Plan**: `docs/tickets/09-ci-workflow-reorg.md`
+- **What landed**:
+  - **`ci.yml` slimmed to validation only.** Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-internal-app` (PR sanity — new; SPA build breakage now fails the PR rather than only surfacing on the next deploy).
+  - **`deploy-staging.yml` is a new file** carrying the `workflow_dispatch`-only deploy DAG: `deploy-network-data` → `build-api-image` → `migrate-db` → `deploy-app-stack` → `deploy-internal-spa` → `smoke`, with `build-internal-app` running in parallel and feeding `deploy-internal-spa`.
+  - **`deploy-app` (the misnomer) split into two jobs.** `deploy-app-stack` only runs `cdk deploy`; `deploy-internal-spa` does the S3 sync + CloudFront invalidation. The SPA can now be re-pushed without redeploying the API stack, and future SPAs (`apps/web`, `apps/portal`) get their own `deploy-<name>-spa` siblings rather than growing one fat job.
+  - **Job renames for clarity.** `deploy-infra` → `deploy-network-data` (matches what it actually deploys), `build-image` + `docker-build` → `build-api-image` (parallels `build-internal-app`, says which image), `cdk` → `cdk-synth`. Every job is now `<verb>-<target>` where it isn't a one-word convention.
+  - **Docs updated.** `system-design.md` deploy-flow Mermaid + paragraph reflect the new shape; `staging-teardown-and-redeploy.md` re-deploy section + per-step time table updated.
+- **What's now possible**:
+  - The deploy DAG is one file; PR validation is another. Either can grow without entangling the other.
+  - Future SPAs slot in by adding `build-<name>` and `deploy-<name>-spa` jobs to `deploy-staging.yml` (and a sanity-build sibling to `ci.yml`); no other shape change needed.
+  - The SPA can be re-deployed independently of the API stack via re-running `deploy-internal-spa` (and its dependency `build-internal-app`).
+- **Deferred** (explicit follow-ups):
+  - **`deploy-production.yml`** — when production env is wanted; pattern is the same as `deploy-staging.yml`.
+  - **Reusable `workflow_call`** for the duplicated `build-internal-app` and `build-api-image` jobs — defer until a third caller justifies the indirection.
+  - **In-workflow gate** on `deploy-staging.yml` requiring a green `ci.yml` for the same SHA — operator discipline for now.
+
 ## 2026-05-10 — `apps/internal` global layout (sidebar + theme + auth gate)
 
 - **Branch / PR**: `feat/internal-global-layout`

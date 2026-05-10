@@ -27,19 +27,23 @@ What's *not* destroyed:
 
 ## Re-deploy
 
-The `deploy-infra → build-image → deploy-app → smoke` workflow runs on every push to `main`. Re-deploying after a tear-down is just any push:
+The `deploy-network-data → build-api-image → migrate-db → deploy-app-stack → deploy-internal-spa → smoke` DAG (`build-internal-app` runs in parallel) lives in `.github/workflows/deploy-staging.yml` and is `workflow_dispatch`-only. Trigger after the green `ci.yml` check on the SHA you want to deploy:
 
 ```bash
-git commit --allow-empty -m "chore: redeploy staging"
-git push
+gh workflow run deploy-staging.yml --ref main
 ```
 
-> **Note (current dev state):** while the template is still being scaffolded and staging gets torn down between dev sessions, the deploy DAG is gated on `workflow_dispatch` instead of `push`. Trigger from the **Actions** tab → **ci** → **Run workflow** (branch `main`), or `gh workflow run ci.yml --ref main`. Revert the `if:` conditions on the deploy jobs back to `github.event_name == 'push' && github.ref == 'refs/heads/main'` once you want continuous deploy.
+Or: **Actions** tab → **deploy-staging** → **Run workflow** (branch `main`).
+
+Staging is intentionally pull-based — pushes to `main` do not auto-deploy, so doc-only or template merges don't unintentionally restart torn-down infra. To switch back to push-driven later, change the `on:` block in `deploy-staging.yml` to `push: { branches: [main] }` (or add it alongside `workflow_dispatch:`).
 
 The first re-deploy after tear-down takes ~5 minutes:
-- ~1 min: `deploy-infra` (NAT gateway is the slowest single resource at ~2 min on creation).
-- ~1 min: `build-image` (uncached pnpm install in Docker).
-- ~2 min: `deploy-app` (Fargate task pull + start + ALB target healthy).
+- ~1 min: `deploy-network-data` (NAT gateway is the slowest single resource at ~2 min on creation).
+- ~1 min: `build-api-image` (uncached pnpm install in Docker).
+- ~30 s: `build-internal-app` (parallel with the API path).
+- ~30 s: `migrate-db` (Fargate task spin-up dominates).
+- ~2 min: `deploy-app-stack` (Fargate rolling update + ALB target healthy).
+- ~10 s: `deploy-internal-spa` (S3 sync + CloudFront invalidation).
 - ≤ 1 min: `smoke` (poll loop usually exits on the first attempt once the rolling update completes).
 
 ## Verifying after re-deploy
