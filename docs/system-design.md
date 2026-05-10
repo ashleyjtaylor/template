@@ -71,27 +71,32 @@ Per-route documentation lives in [`docs/endpoints.md`](endpoints.md) — request
 
 ## Deploy flow
 
+Two workflow files own the staging deploy story:
+
+- **`.github/workflows/ci.yml`** — PR + push validation only. Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-internal-app` (PR sanity).
+- **`.github/workflows/deploy-staging.yml`** — `workflow_dispatch`-only deploy DAG.
+
 ```mermaid
 graph LR
-    Push[workflow_dispatch on main] --> CI[ci]
-    Push --> CDK[cdk synth]
-    CI --> Infra[deploy-infra]
-    CDK --> Infra
-    Infra -->|cdk deploy<br/>network + data<br/>-c imageTag=sha| Build[build-image]
-    Infra --> BuildSpa[build-internal-app]
-    Build -->|docker build<br/>push :sha to ECR| Migrate[migrate-db]
-    Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| App[deploy-app]
-    BuildSpa -->|vite build<br/>upload bundle artifact| App
-    App -->|cdk deploy app + S3 sync<br/>+ CloudFront invalidation| Smoke[smoke]
+    Trigger[workflow_dispatch on main] --> Network[deploy-network-data]
+    Network -->|cdk deploy<br/>network + data<br/>-c imageTag=sha| BuildApi[build-api-image]
+    Trigger --> BuildSpa[build-internal-app]
+    BuildApi -->|docker build<br/>push :sha to ECR| Migrate[migrate-db]
+    Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| AppStack[deploy-app-stack]
+    AppStack -->|cdk deploy app| InternalSpa[deploy-internal-spa]
+    BuildSpa -->|vite build<br/>upload bundle artifact| InternalSpa
+    InternalSpa -->|S3 sync + CloudFront invalidate| Smoke[smoke]
+    AppStack --> Smoke
     Smoke -->|curl ALB /health<br/>curl CloudFront /| Done([deployed])
 ```
 
-- Deploy jobs run on `workflow_dispatch` (manual trigger from the Actions tab) on `main`, gated by `[ci, cdk]` passing. _(Note: while the template is being scaffolded, deploys are gated on `workflow_dispatch` rather than push — see `docs/runbooks/staging-teardown-and-redeploy.md`.)_
+- The deploy DAG is `workflow_dispatch`-only (manual trigger from the Actions tab). Operator discipline: trigger only after the green check from `ci.yml` on the same SHA. There is no in-workflow gate yet — see `docs/tickets/09-ci-workflow-reorg.md` for when to add one.
 - AWS access via OIDC (`AWS_DEPLOY_ROLE_ARN` in the `staging` GitHub Environment).
-- `deploy-infra` passes `imageTag` so the migrator task definition references the SHA `build-image` is about to push. CFN doesn't validate ECR image existence at deploy time, so referring to a not-yet-pushed tag is fine.
-- `build-internal-app` runs in parallel with `build-image` and uploads the Vite bundle as a workflow artifact for `deploy-app`. Each future SPA gets its own job (`build-web-app`, `build-portal-app`).
+- `deploy-network-data` passes `imageTag` so the migrator + bootstrap-staff task definitions reference the SHA `build-api-image` is about to push. CFN doesn't validate ECR image existence at deploy time, so referring to a not-yet-pushed tag is fine.
+- `build-internal-app` runs in parallel with everything that doesn't need it; the artifact is consumed by `deploy-internal-spa`. Each future SPA gets its own `build-<name>` + `deploy-<name>-spa` pair.
 - `migrate-db` invokes `aws ecs run-task` against the migrator task definition, waits for it to stop, and fails the workflow on a non-zero exit (dumping the last 5 minutes of `/ecs/template-staging-migrator` logs).
-- `deploy-app` uses `cdk deploy --exclusively` so it does not re-confirm the network and data stacks. After the stack converges it downloads the SPA artifact, two-pass-syncs it to S3 (long-cache + immutable for hashed assets, no-cache for `index.html`), and invalidates `/` + `/index.html` on CloudFront so the new shell ships immediately.
+- `deploy-app-stack` uses `cdk deploy --exclusively` so it does not re-confirm the network and data stacks.
+- `deploy-internal-spa` downloads the SPA artifact, two-pass-syncs it to S3 (long-cache + immutable for hashed assets, no-cache for `index.html`), and invalidates `/` + `/index.html` on CloudFront. Sequenced after `deploy-app-stack` so the distribution exists.
 - The smoke step polls the ALB `/health` for up to 5 minutes (asserting `version` matches the pushed SHA) and curls CloudFront for the SPA shell (asserting the response contains `id="root"`).
 
 ### bootstrap-staff (sibling workflow)
