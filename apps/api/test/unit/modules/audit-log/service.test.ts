@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { writeAudit } from '@/lib/audit.js'
 import { prisma } from '@/lib/db.js'
 import { logger, runWithContext } from '@/lib/logger.js'
+import { writeAudit } from '@/modules/audit-log/service.js'
 
 afterEach(() => {
   vi.restoreAllMocks()

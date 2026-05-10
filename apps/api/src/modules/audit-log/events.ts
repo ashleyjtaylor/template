@@ -1,6 +1,3 @@
-import { prisma } from '@/lib/db.js'
-import { getRequestId, logger } from '@/lib/logger.js'
-
 // Discriminated union of every audit action our code can emit. Past-tense by
 // default; CRUD-style (`<resource>.created` / `.updated` / `.deleted`) where it
 // reads more naturally — picked per event when introduced. See `audit` skill
@@ -46,34 +43,4 @@ export interface AuditContext {
   ipAddress?: string | null
   userAgent?: string | null
   actorImpersonatorId?: string | null
-}
-
-// Best-effort: writes the row, awaits it (so caller sees timing in the
-// originating request), but catches everything and logs at error level. The
-// originating request never sees an audit-write failure — losing one event
-// is preferable to failing a real user action because of an audit bug.
-export async function writeAudit(event: AuditEvent, context: AuditContext = {}) {
-  try {
-    const { action } = event
-    const actorUserId = 'actorUserId' in event ? event.actorUserId : null
-    const resourceId = 'resourceId' in event ? event.resourceId : null
-    const resourceType = action.split('.')[0] ?? null
-
-    await prisma.auditLog.create({
-      data: {
-        entityId: `aud_${crypto.randomUUID()}`,
-        requestId: getRequestId() ?? null,
-        action,
-        actorUserId,
-        actorImpersonatorId: context.actorImpersonatorId ?? null,
-        resourceType,
-        resourceId,
-        ipAddress: context.ipAddress ?? null,
-        userAgent: context.userAgent ?? null,
-        details: event as object
-      }
-    })
-  } catch (err) {
-    logger.error({ err, action: event.action }, 'audit write failed')
-  }
 }
