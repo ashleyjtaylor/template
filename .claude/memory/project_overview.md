@@ -78,6 +78,8 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 `apps/web` and `apps/internal` are **always scaffolded by default**. `apps/portal` is added per-fork via `pnpm scaffold:app portal`, which copies `templates/spa-app/` and wires up CDK + CI + DNS + the auth boundary.
 
+`apps/internal` ships with a persistent sidebar layout — brand wordmark, nav links (Home, Audit log), env+SHA badge driven by `/health`, three-state theme switcher (light / dark / system, persisted in localStorage), and a UserMenu with sign-out. A single `AuthGate` at `__root.tsx` runs the redirect logic via `useSession()` (wraps `GET /api/auth/get-session`); per-page 401 effects are not needed. Home is a placeholder dashboard with TBD widget cards.
+
 ---
 
 ## Identity & access

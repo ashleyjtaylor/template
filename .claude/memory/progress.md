@@ -12,6 +12,31 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-10 — `apps/internal` global layout (sidebar + theme + auth gate)
+
+- **Branch / PR**: `feat/internal-global-layout`
+- **Plan**: `docs/tickets/08-internal-global-layout.md`
+- **What landed**:
+  - **`APP_ENV` on `/health`** — distinct from `NODE_ENV` (which is `'production'` on both staging and prod and so can't tell them apart). CDK injects `APP_ENV: envName` into the API container env. The SPA reads it for the sidebar env+SHA badge.
+  - **`modules/session/{schemas,api}.ts`** — `useSession()` wraps `GET /api/auth/get-session` (which always returns 200, `null` body when unauthed) and exposes `{ user, isAuthed, isLoading }`. `useSignOut()` mutation resets the session cache on settle so the auth gate redirects immediately.
+  - **`modules/theme/`** — three-state theme switcher (light / dark / system). Provider applies `dark` to `<html>`, persists the chosen value to `localStorage`, listens to live `prefers-color-scheme` changes when `'system'`. `ThemeToggle` is a Radix DropdownMenu (added as a shadcn primitive — first cross-feature consumer beyond the toggle is the sidebar UserMenu).
+  - **`vitest` + `jsdom` + Testing Library** for `apps/internal` — six tests cover the theme provider's load-from-storage, system-follow, explicit-override branches. Node 24+ ships an experimental built-in `localStorage` global that collides with jsdom's; the `--no-webstorage` execArgv (top-level in vitest 4) tells Node to leave the slot to jsdom.
+  - **`components/layout/{Sidebar,NavItem,EnvBadge,UserMenu}.tsx`** — sidebar shell with brand wordmark, nav links (Home, Audit log), env+SHA badge driven by `/health` (`prod=red`, `staging=yellow`, `dev=green` dot), theme dropdown, signed-in-as user menu with sign-out.
+  - **`__root.tsx` rewrite** — composes Sidebar around the page Outlet on authed routes; on `/login` (and any future entry in `UNAUTHED_PATHS`) renders a bare `<Outlet />`. A single `AuthGate` runs the redirect logic via `useSession()` — unauthed users hit `/login`, signed-in users on `/login` bounce to `/`. Renders null during the session-load window to avoid a flash before redirect resolves. Audit list + detail dropped their per-page 401 useEffects.
+  - **`main.tsx`** — `ThemeProvider` mounted at the app root so the dark class persists across route changes.
+  - **`routes/index.tsx`** — placeholder paragraph replaced with a real Home surface (header + three TBD widget cards in a responsive grid).
+- **What's now possible**:
+  - Real staff workflow: log in → land on Home → see env + SHA at a glance → click Audit log → toggle dark mode → sign out — all in the deployed SPA.
+  - Future internal pages slot into the Sidebar nav by adding a `<NavItem>` and a route file; the auth gate covers them automatically.
+  - Per-feature 401 handling can be deleted everywhere — the gate is the single redirect path.
+  - Component tests are unblocked across `apps/internal` for any future React unit testing.
+- **Deferred** (explicit follow-ups):
+  - **Sidebar collapse / responsive behaviour** — fixed-width day one; revisit at 5+ routes.
+  - **Per-role nav filtering** — all staff see all routes for now.
+  - **Real Home widgets** — placeholder cards only; first real widget is its own PR.
+  - **Mid-session 401 invalidation** — the gate handles fresh page loads and tab refocus; if a query 401s while the user is actively in a tab, the page shows the error block until the next refocus or refresh. Add a query-cache `onError` invalidator for the session if this becomes a real friction point.
+  - **CI workflow reorganisation** — `deploy-app` is now a misnomer (deploys API stack + syncs SPA + invalidates CloudFront); split into per-target jobs once a second SPA appears.
+
 ## 2026-05-10 — `apps/internal` SPA + audit-log read API + staff bootstrap
 
 - **Branch / PR**: `feat/internal-app-audit-log`
