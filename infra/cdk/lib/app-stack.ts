@@ -1,4 +1,13 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import {
+  AllowedMethods,
+  CachePolicy,
+  Distribution,
+  OriginProtocolPolicy,
+  OriginRequestPolicy,
+  ViewerProtocolPolicy
+} from 'aws-cdk-lib/aws-cloudfront'
+import { LoadBalancerV2Origin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins'
 import { type SecurityGroup, SubnetType, type Vpc } from 'aws-cdk-lib/aws-ec2'
 import type { Repository } from 'aws-cdk-lib/aws-ecr'
 import {
@@ -17,6 +26,7 @@ import {
   TargetType
 } from 'aws-cdk-lib/aws-elasticloadbalancingv2'
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs'
+import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
 import type { Construct } from 'constructs'
 import { type EnvName, PRODUCT } from './config.js'
 import { APP_PORT } from './network-stack.js'
@@ -45,16 +55,81 @@ export class AppStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     })
 
-    // ALB is constructed before the task definition so its generated DNS name
-    // can be injected into the container's BETTER_AUTH_URL env var. Until DNS
-    // lands, the ALB DNS is the canonical public origin better-auth uses for
-    // OAuth callbacks, email-verification links, etc. Swap to the real
-    // `https://api.<domain>` once Route53/ACM are wired.
+    // ALB is constructed first so it can be referenced by both the CloudFront
+    // distribution (as the /api/* origin) and the API task's env (where the
+    // ALB DNS is the fallback for direct-to-ALB testing).
     const alb = new ApplicationLoadBalancer(this, 'Alb', {
       vpc,
       internetFacing: true,
       securityGroup: albSg,
       loadBalancerName: `${PRODUCT}-${envName}`
+    })
+
+    // Private S3 bucket holding the apps/internal SPA bundle. CloudFront reads
+    // it via OAC; nothing public-facing.
+    const spaBucket = new Bucket(this, 'InternalSpaBucket', {
+      bucketName: `${PRODUCT}-${envName}-internal-spa`,
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          // Cancel any abandoned multipart uploads after a day so they don't
+          // accumulate billable storage.
+          enabled: true,
+          abortIncompleteMultipartUploadAfter: Duration.days(1)
+        }
+      ]
+    })
+
+    // CloudFront fronts everything. Default behavior serves the SPA bundle
+    // from S3; `/api/*` proxies to the ALB. Browser sees a single origin
+    // (`<dist>.cloudfront.net`), so the SPA's session cookie travels
+    // same-origin to the API — no CORS, no cross-domain cookie dance.
+    const distribution = new Distribution(this, 'InternalSpaDistribution', {
+      comment: `${PRODUCT}-${envName} apps/internal + api`,
+      defaultRootObject: 'index.html',
+      defaultBehavior: {
+        origin: S3BucketOrigin.withOriginAccessControl(spaBucket),
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        // Hashed Vite assets (`/assets/*-<hash>.js|css`) cache forever; the
+        // CI step uploads `index.html` with explicit Cache-Control: no-cache
+        // so SPA-shell updates ship on the next request.
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED
+      },
+      additionalBehaviors: {
+        '/api/*': {
+          origin: new LoadBalancerV2Origin(alb, {
+            protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
+            httpPort: 80
+          }),
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: AllowedMethods.ALLOW_ALL,
+          cachePolicy: CachePolicy.CACHING_DISABLED,
+          // Forward cookies, Origin, Authorization etc. to the API. We exclude
+          // Host so CF rewrites it to the ALB's hostname (otherwise the ALB
+          // doesn't know how to route).
+          originRequestPolicy: OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER
+        }
+      },
+      // SPA routing: any path not in S3 (e.g. /audit, /audit/<id>) returns
+      // index.html so the React Router can take over client-side. S3 with OAC
+      // returns 403 for missing keys; CloudFront returns 404 for the rest.
+      errorResponses: [
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: Duration.minutes(0)
+        },
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: Duration.minutes(0)
+        }
+      ]
     })
 
     const taskDef = new FargateTaskDefinition(this, 'ApiTask', {
@@ -68,10 +143,16 @@ export class AppStack extends Stack {
       // GIT_SHA is intentionally not set here — it is baked into the image at
       // build time via the Dockerfile's GIT_SHA build arg, so the image is
       // self-describing. Injecting it here too would let the values disagree.
+      //
+      // BETTER_AUTH_URL + CORS_ORIGINS both point at the CloudFront DNS so
+      // the SPA's same-origin cookie + CSRF Origin checks line up with what
+      // the browser sends. Once Route53/ACM land, swap to the real
+      // `https://internal.<domain>`.
       environment: {
         NODE_ENV: 'production',
         PORT: String(APP_PORT),
-        BETTER_AUTH_URL: `http://${alb.loadBalancerDnsName}`
+        BETTER_AUTH_URL: `https://${distribution.distributionDomainName}`,
+        CORS_ORIGINS: `https://${distribution.distributionDomainName}`
       },
       secrets: { ...dbSecrets, ...appSecrets },
       // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
@@ -131,7 +212,19 @@ export class AppStack extends Stack {
 
     new CfnOutput(this, 'AlbDnsName', {
       value: alb.loadBalancerDnsName,
-      description: 'Public DNS name of the ALB'
+      description: 'Public DNS name of the ALB (direct origin; canonical entry is CloudFront)'
+    })
+    new CfnOutput(this, 'InternalSpaUrl', {
+      value: `https://${distribution.distributionDomainName}`,
+      description: 'CloudFront URL serving apps/internal + proxied /api/*'
+    })
+    new CfnOutput(this, 'InternalSpaBucketName', {
+      value: spaBucket.bucketName,
+      description: 'S3 bucket the CI build-spa job syncs the apps/internal bundle into'
+    })
+    new CfnOutput(this, 'InternalSpaDistributionId', {
+      value: distribution.distributionId,
+      description: 'CloudFront distribution ID for cache invalidations on deploy'
     })
   }
 }

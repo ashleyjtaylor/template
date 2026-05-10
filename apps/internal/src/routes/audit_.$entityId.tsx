@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError, api } from '@/lib/api'
 import { type AuditLogRow, auditLogRowSchema, formatTsFull, splitAction } from '@/lib/audit-log'
 
-export const Route = createFileRoute('/audit/$entityId')({
+export const Route = createFileRoute('/audit_/$entityId')({
   component: AuditDetailPage
 })
 
