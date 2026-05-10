@@ -130,8 +130,8 @@ function AuditPage() {
       />
 
       <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
-        <header className="mb-8 animate-in fade-in slide-in-from-bottom-1 duration-500">
-          <div className="font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground/70 uppercase">
+        <header className="mb-8">
+          <div className="text-[10px] font-medium text-muted-foreground/70 uppercase">
             Internal Console · /api/audit-log
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Audit Log</h1>
@@ -140,10 +140,7 @@ function AuditPage() {
           </p>
         </header>
 
-        <div
-          className="mb-6 rounded-lg border bg-card/60 shadow-xs animate-in fade-in slide-in-from-bottom-1 duration-500 fill-mode-backwards"
-          style={{ animationDelay: '60ms' }}
-        >
+        <div className="mb-6 rounded-lg border bg-card/60 shadow-xs">
           <div className="flex flex-wrap items-end gap-3 p-3">
             <FilterField label="Action" htmlFor={actionId}>
               <select
@@ -197,7 +194,7 @@ function AuditPage() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="ml-auto inline-flex h-9 items-center gap-1.5 px-2 font-mono text-[10px] tracking-[0.15em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+                className="ml-auto inline-flex h-9 items-center gap-1.5 px-2 text-[10px] text-muted-foreground uppercase transition-colors hover:text-foreground"
               >
                 <RotateCcw className="size-3" />
                 Clear
@@ -206,11 +203,8 @@ function AuditPage() {
           </div>
         </div>
 
-        <div
-          className="overflow-hidden rounded-lg border bg-card/60 shadow-xs animate-in fade-in slide-in-from-bottom-1 duration-500 fill-mode-backwards"
-          style={{ animationDelay: '120ms' }}
-        >
-          <div className="grid grid-cols-[180px_minmax(180px,1fr)_minmax(220px,1.4fr)_minmax(160px,1fr)_120px] gap-4 border-b bg-muted/30 px-4 py-2.5 font-mono text-[10px] font-medium tracking-[0.15em] text-muted-foreground uppercase">
+        <div className="overflow-hidden rounded-lg border bg-card/60 shadow-xs">
+          <div className="grid grid-cols-[180px_minmax(180px,1fr)_minmax(220px,1.4fr)_minmax(160px,1fr)_120px] gap-4 border-b bg-muted/30 px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase">
             <div>Timestamp</div>
             <div>Action</div>
             <div>Actor</div>
@@ -264,7 +258,7 @@ function AuditPage() {
         </div>
 
         {!list.isLoading && !is403 && rows.length > 0 && (
-          <div className="mt-4 text-center font-mono text-[10px] tracking-[0.15em] text-muted-foreground/60 uppercase">
+          <div className="mt-4 text-center text-[10px] text-muted-foreground/60 uppercase">
             {rows.length} {rows.length === 1 ? 'event' : 'events'}
             {list.hasNextPage ? ' · more available' : ''}
           </div>
@@ -287,10 +281,7 @@ function FilterField({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={htmlFor}
-        className="font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground uppercase"
-      >
+      <label htmlFor={htmlFor} className="text-[10px] font-medium text-muted-foreground uppercase">
         {label}
       </label>
       {children}
@@ -314,10 +305,10 @@ function RowItem({
       params={{ entityId: row.entityId }}
       className="grid grid-cols-[180px_minmax(180px,1fr)_minmax(220px,1.4fr)_minmax(160px,1fr)_120px] items-center gap-4 border-b px-4 py-3 text-sm transition-colors last:border-b-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
     >
-      <div className="font-mono text-xs text-muted-foreground tabular-nums">
+      <div className="text-xs text-muted-foreground tabular-nums">
         {formatTsCompact(row.createdAt)}
       </div>
-      <div className="font-mono text-xs">
+      <div className="text-xs">
         <span className="text-muted-foreground/60">{ns}</span>
         <span className="text-foreground">{verb}</span>
       </div>
@@ -391,9 +382,7 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 function NotAuthorisedBlock() {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
-      <div className="font-mono text-[10px] tracking-[0.2em] text-destructive uppercase">
-        403 — Forbidden
-      </div>
+      <div className="text-[10px] text-destructive uppercase">403 — Forbidden</div>
       <p className="text-sm text-foreground">Staff access required to view this page.</p>
       <p className="max-w-md text-xs text-muted-foreground">
         Your account is signed in but does not have a staff role. Speak to an existing staff member
@@ -406,7 +395,7 @@ function NotAuthorisedBlock() {
 function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
-      <div className="font-mono text-[10px] tracking-[0.2em] text-destructive uppercase">Error</div>
+      <div className="text-[10px] text-destructive uppercase">Error</div>
       <p className="text-sm text-foreground">{message}</p>
       <Button variant="outline" size="sm" onClick={onRetry}>
         Try again

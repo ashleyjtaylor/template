@@ -65,7 +65,7 @@ function LoginPage() {
       />
 
       <div className="relative flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="w-full max-w-sm">
           <div className="relative rounded-lg border bg-card shadow-sm">
             {/* Single-pixel top accent — quietly signals the card is "live" */}
             <div
@@ -75,7 +75,7 @@ function LoginPage() {
 
             <div className="px-6 pt-7 pb-6">
               <div className="mb-6">
-                <div className="mb-2 font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground uppercase">
+                <div className="mb-2 text-[10px] font-medium text-muted-foreground uppercase">
                   Internal Console
                 </div>
                 <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
@@ -85,7 +85,7 @@ function LoginPage() {
               {signIn.isError && (
                 <div
                   role="alert"
-                  className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs text-destructive animate-in fade-in slide-in-from-top-1 duration-300"
+                  className="mb-5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs text-destructive"
                 >
                   {friendlyError(signIn.error)}
                 </div>
@@ -95,7 +95,7 @@ function LoginPage() {
                 <div className="space-y-1.5">
                   <label
                     htmlFor="email"
-                    className="block font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground uppercase"
+                    className="block text-[10px] font-medium text-muted-foreground uppercase"
                   >
                     Email
                   </label>
@@ -114,7 +114,7 @@ function LoginPage() {
                 <div className="space-y-1.5">
                   <label
                     htmlFor="password"
-                    className="block font-mono text-[10px] font-medium tracking-[0.2em] text-muted-foreground uppercase"
+                    className="block text-[10px] font-medium text-muted-foreground uppercase"
                   >
                     Password
                   </label>
@@ -143,7 +143,7 @@ function LoginPage() {
             </div>
           </div>
 
-          <div className="mt-5 text-center font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase">
+          <div className="mt-5 text-center text-[10px] text-muted-foreground/60 uppercase">
             Staff Access · Authorised use only
           </div>
         </div>
