@@ -122,7 +122,7 @@ function DetailContent({ row }: { row: AuditLogRow }) {
 
           <div className="border-t" />
 
-          <dl className="grid grid-cols-[110px_1fr] items-baseline gap-x-6 gap-y-3.5">
+          <dl className="flex flex-col gap-3.5">
             <FieldRow label="Actor">
               {row.actorImpersonator ? (
                 <span className="text-sm">
@@ -242,10 +242,12 @@ function FieldLabel({ children }: { children: ReactNode }) {
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
-      <dt className="text-[10px] font-medium text-muted-foreground uppercase">{label}</dt>
-      <dd>{children}</dd>
-    </>
+    <div className="flex items-baseline gap-6">
+      <dt className="w-27.5 shrink-0 text-[10px] font-medium text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1">{children}</dd>
+    </div>
   )
 }
 
@@ -270,14 +272,14 @@ function SkeletonBlocks() {
             <Skeleton className="mt-2 h-4 w-64" />
           </div>
 
-          <div className="space-y-3.5 border-t pt-4">
+          <div className="flex flex-col gap-3.5 border-t pt-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder list
                 key={i}
-                className="grid grid-cols-[110px_1fr] gap-x-6"
+                className="flex items-baseline gap-6"
               >
-                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-20 shrink-0" />
                 <Skeleton className="h-3 w-44" />
               </div>
             ))}
