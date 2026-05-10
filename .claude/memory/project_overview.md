@@ -428,24 +428,37 @@ Subsequent deploys: push image → CI orchestrates ECS rolling update; CDK only 
 
 ### Workflow shape
 
-A single `ci.yml` houses every job, gated by `github.event_name` and `github.ref`. We chose this over separate workflow files because conditional jobs scale fine at our size, share concurrency / setup blocks, and keep the deploy DAG visible in one place. Split into multiple workflow files only if branch protection or environment rules force it.
+Three workflow files, split by purpose:
+
+- **`.github/workflows/ci.yml`** — PR + push validation only. Runs on every PR and every push to `main`.
+- **`.github/workflows/deploy-staging.yml`** — `workflow_dispatch`-only deploy DAG. Operator triggers from the Actions tab after the green check on `main`.
+- **`.github/workflows/bootstrap-staff.yml`** — `workflow_dispatch`-only one-shot for creating / promoting a staff user (sibling to the deploy DAG, never wired into it).
+
+Staging is intentionally pull-based — pushes to `main` don't auto-deploy, so doc/code merges don't unintentionally restart torn-down infra. To switch back to push-driven, change the `on:` block in `deploy-staging.yml`.
+
+Job naming is `<verb>-<target>` (e.g. `build-api-image`, `deploy-internal-spa`) so each job says what it does and which thing it does it to. Single-word jobs (`ci`, `smoke`, `commitlint`) keep their conventional names.
 
 Job layout:
 
-- **Validation** (every PR + push to `main`):
+- **Validation** (`ci.yml`, every PR + push to `main`):
   - `ci` — install → Biome → typecheck → test (unit + integration with Postgres service container).
-  - `cdk` — `cdk synth` against all stacks.
+  - `cdk-synth` — `cdk synth` against all stacks.
   - `commitlint` (PR-only).
-  - `docker-build` (PR-only) — exercises `apps/api/Dockerfile` so breakage doesn't reach `main`.
-- **Staging deploy chain** (push to `main`, gated on validation green):
-  - `deploy-infra` — `cdk deploy` network + data stacks.
-  - `build-image` — `docker build` + push image tagged `${git-sha}` to ECR.
+  - `build-api-image` (PR-only) — builds `apps/api/Dockerfile` so Dockerfile breakage fails the PR.
+  - `build-internal-app` (PR-only) — builds the apps/internal Vite bundle so SPA build breakage fails the PR.
+- **Staging deploy DAG** (`deploy-staging.yml`, `workflow_dispatch` only):
+  - `deploy-network-data` — `cdk deploy` network + data stacks with `-c imageTag=${sha}` so the migrator + bootstrap-staff task definitions reference the SHA the next job is about to push.
+  - `build-api-image` — `docker build` + push image tagged `${sha}` to ECR.
+  - `build-internal-app` — `vite build` + upload bundle as a workflow artifact (parallel with the API path; doesn't depend on infra).
   - `migrate-db` — ECS one-off task running `prisma migrate deploy`.
-  - `deploy-app` — `cdk deploy` app stack with `imageTag` context (rolling ECS update).
-  - `smoke` — poll ALB DNS for `/health`, assert `version` matches the SHA.
-  - On green, re-tag the image as `staging-passed-${git-sha}` for promotion.
-- **Production deploy chain** (git tag `v*.*.*` or `workflow_dispatch`, environment-protected):
-  - Verify the SHA has a `staging-passed` image → require approval (GitHub Environments rule) → re-tag image as `v${tag}` → `migrate-db` → `deploy-app` → `smoke`. **No rebuild** — the same image binary that passed staging runs in production (promote-by-image).
+  - `deploy-app-stack` — `cdk deploy` app stack with `imageTag` context (rolling ECS update; creates the CloudFront distribution + S3 bucket on first run).
+  - `deploy-internal-spa` — downloads the SPA artifact, two-pass-syncs to S3 (long-cache + immutable for hashed assets, no-cache for `index.html`), invalidates `/` + `/index.html` on CloudFront. Sequenced after `deploy-app-stack` so the distribution exists.
+  - `smoke` — poll ALB `/health` (asserting `version` matches the SHA + `env` matches `APP_ENV`) and curl CloudFront for the SPA shell (asserting `id="root"`).
+  - On green, re-tag the image as `staging-passed-${sha}` for promotion (deferred — see below).
+- **Production deploy DAG** (deferred — `deploy-production.yml` doesn't exist yet):
+  - When the production env is wanted, mirror `deploy-staging.yml` with `environment: production` and an environment-protected approval rule. Verify the SHA has a `staging-passed` tag, require approval, re-tag as `v${tag}` → `migrate-db` → `deploy-app-stack` → `deploy-internal-spa` → `smoke`. **No rebuild** — the same image binary that passed staging runs in production (promote-by-image).
+
+Each future SPA (`apps/web`, `apps/portal`) follows the same pattern: a `build-<name>` job in both files (PR sanity + deploy artifact) and a `deploy-<name>-spa` job in `deploy-staging.yml`.
 
 ### Promote-by-image (critical)
 

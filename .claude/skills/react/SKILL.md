@@ -89,6 +89,25 @@ Render a **`SkeletonBlocks`** component that mirrors the real layout to avoid la
 - Local UI state: `useState`. No Zustand / Jotai / Redux until a real cross-component need appears.
 - Theme / auth / global preferences: a single `lib/<topic>-context.tsx` provider mounted at the root. Don't pre-create providers for hypothetical needs.
 
+## Tests — unit only (no integration tier)
+
+SPAs ship `apps/<spa>/test/unit/` only. There is **no `integration/`** sibling, intentionally:
+
+- The boundaries that matter for a SPA are the real browser DOM, real HTTP, and real user input. jsdom-based "integration" tests cover little that typecheck doesn't already, while pretending to test something they aren't.
+- The middle tier between unit and end-to-end on the frontend is **Playwright**, not vitest + jsdom. When the SPA is mature enough to justify the harness, E2E user-flow tests land at `apps/<spa>/e2e/` (not `test/integration/`).
+
+The backend (`apps/api`) is the opposite — `test/integration/` is dense because HTTP → service → DB roundtrips are where real bugs live. Don't mirror that structure on the SPA.
+
+What to unit-test on the SPA:
+- Pure helpers (formatters, splitters, validation).
+- Hook logic with non-trivial branches (the `ThemeProvider`'s system / explicit / persisted load is the canonical example).
+- Anything the typecheck can't prove.
+
+What not to unit-test:
+- Markup ("does this component render this string"). Brittle, low value.
+- Static props plumbing. Typecheck owns this.
+- TanStack Query / Router internals. Trust the library.
+
 ## What not to do
 
 - **No emoji** in UI strings — see `css` skill.
