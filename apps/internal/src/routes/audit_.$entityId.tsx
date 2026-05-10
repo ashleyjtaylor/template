@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Check, Copy, FileQuestion } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError } from '@/lib/api'
@@ -22,17 +22,9 @@ const friendlyError = (err: unknown): string => {
 
 function AuditDetailPage() {
   const { entityId } = Route.useParams()
-  const navigate = useNavigate()
   const shortId = entityId.slice(-8)
 
   const event = useAuditLogDetail(entityId)
-
-  // 401 → bounce to /login
-  useEffect(() => {
-    if (event.error instanceof ApiError && event.error.status === 401) {
-      navigate({ to: '/login' })
-    }
-  }, [event.error, navigate])
 
   const is403 = event.error instanceof ApiError && event.error.status === 403
   const is404 = event.error instanceof ApiError && event.error.status === 404

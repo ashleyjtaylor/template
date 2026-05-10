@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ChevronDown, Inbox, Loader2, RotateCcw } from 'lucide-react'
-import { type ReactNode, useEffect, useId } from 'react'
+import { type ReactNode, useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,13 +36,6 @@ function AuditPage() {
 
   const list = useAuditLogList(search)
   const actions = useAuditLogActions()
-
-  // 401 means no session — bounce to /login.
-  useEffect(() => {
-    if (list.error instanceof ApiError && list.error.status === 401) {
-      navigate({ to: '/login' })
-    }
-  }, [list.error, navigate])
 
   const updateFilter = (patch: Partial<AuditLogSearch>) => {
     navigate({
