@@ -26,8 +26,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
+  sessions             Session[]
+  accounts             Account[]
+  memberships          Membership[]
+  sentInvitations      Invitation[] @relation("InvitationInvitedBy")
+  acceptedInvitations  Invitation[] @relation("InvitationAcceptedBy")
 
   @@index([requestId])
   @@map("user")
@@ -111,4 +114,67 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([requestId])
   @@map("audit_log")
+}
+
+// Tenancy primitives: orgs, the M:N join carrying role, and email invites.
+// Snake_case columns via @map per the database skill; entityId is the PK
+// (no separate vendor `id`). Cascade-on-org-delete wired today; once
+// soft-delete lands those cascades still apply at hard-delete time.
+model Organisation {
+  entityId  String   @id @map("entity_id")
+  requestId String?  @map("request_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@index([requestId])
+  @@map("organisation")
+}
+
+model Membership {
+  entityId       String   @id @map("entity_id")
+  requestId      String?  @map("request_id")
+  organisationId String   @map("organisation_id")
+  userId         String   @map("user_id")
+  role           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organisation Organisation @relation(fields: [organisationId], references: [entityId], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, userId])
+  @@index([userId])
+  @@index([organisationId, role])
+  @@index([requestId])
+  @@map("membership")
+}
+
+// Outstanding-invite uniqueness ((organisation_id, email) WHERE not yet
+// accepted/revoked) is enforced via a partial unique index added by hand in
+// the migration SQL — Prisma's schema language can't express partial
+// uniqueness yet. Service layer pre-checks for friendlier 409s.
+model Invitation {
+  entityId         String    @id @map("entity_id")
+  requestId        String?   @map("request_id")
+  organisationId   String    @map("organisation_id")
+  email            String
+  role             String
+  tokenHash        String    @map("token_hash")
+  invitedByUserId  String    @map("invited_by_user_id")
+  acceptedAt       DateTime? @map("accepted_at")
+  acceptedByUserId String?   @map("accepted_by_user_id")
+  revokedAt        DateTime? @map("revoked_at")
+  expiresAt        DateTime  @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organisation Organisation @relation(fields: [organisationId], references: [entityId], onDelete: Cascade)
+  invitedBy    User         @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id])
+  acceptedBy   User?        @relation("InvitationAcceptedBy", fields: [acceptedByUserId], references: [id])
+
+  @@index([tokenHash])
+  @@index([email])
+  @@index([requestId])
+  @@map("invitation")
 }

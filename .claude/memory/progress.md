@@ -12,6 +12,35 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-10 — Organisations: foundations + invites + role management
+
+- **Branch / PR**: `feat/api-organisations`
+- **Plan**: `docs/tickets/10-organisations-foundation.md`
+- **What landed**:
+  - **Three new Postgres tables** — `organisation`, `membership`, `invitation` — with the prefixed-id (`org_`, `memb_`, `inv_`) + `requestId` + snake_case `@map` conventions. Cascade delete from organisation; the invitation→user FKs are `Restrict` for the inviter and `SetNull` for the accepter. A hand-written partial unique index enforces "at most one outstanding invitation per (org, email)" — Prisma's schema can't express partial uniqueness so the migration was extended manually after `prisma migrate dev`.
+  - **Two new modules** under the route → controller → service layering:
+    - `apps/api/src/modules/organisations/` — org reads/edits, member changes, transfer-ownership, the composite `/api/orgs/sign-up` (calls `auth.api.signUpEmail` then `service.createOrg` and stitches together the response).
+    - `apps/api/src/modules/org-invitations/` — invitation CRUD plus the public token-keyed preview/accept routes. Imports `Role` from the orgs module's schemas; orgs module has no inverse import (one-way dep).
+  - **Two new middleware** alongside `require-staff.ts` — `require-session.ts` (session-only routes) and `require-org-role.ts` (`requireMember` / `requireAdmin` / `requireOwner`, mounted under `/api/orgs/:orgId` so `:orgId` resolves at the parent and the middleware reads it via `c.req.param('orgId')`).
+  - **AuditEvent union extended** with the eight org-governance variants (`organisation.created`, `name_changed`, `member.invited`, `invitation.revoked`, `invitation.accepted` with `alreadyMember`, `member.role_changed`, `ownership.transferred`, `member.removed`, `member.left`) — the placeholder `organisation.role.changed` was reshaped to `organisation.member.role_changed` for `member.<verb>` consistency.
+  - **Two signup paths**, both wired today. Standard `POST /api/auth/sign-up/email` (better-auth) creates a user only — single-user-product forks use just this. New `POST /api/orgs/sign-up` is a composite for team-product forks. **No personal-org-on-signup auto-create anywhere** — `project_overview.md` was updated to reflect this and to drop "active org is part of session state" (the URL is the active org; the server has no session-level active-org concept).
+  - **Last-owner protection** is enforced inside every mutation transaction by `assertLastOwner` (which calls the pure, unit-tested `wouldStillHaveOwner`). Demoting / removing / leaving the only owner returns **409** `LastOwnerRequired`.
+  - **Invitation tokens** are sha256-hashed at rest (raw token never stored). The raw token is returned exactly once, in the create response, as a relative `link: '/accept-invite?token=…'` — the consumer prefixes with the SPA host. SES isn't wired yet so the inviter sends the link out-of-band; the API shape is forward-compatible with a future email worker.
+  - **Tests**: 12 new unit tests (`tokens.test.ts` + `service.test.ts` for the pure last-owner check) plus 37 integration tests across `organisations.test.ts` (18) and `org-invitations.test.ts` (19), against the existing Postgres service container. All 101 api tests green.
+  - **Convention work**: this PR codified the route → controller → service layering and the no-await-in-`c.json` rule into the `code-style` skill (after the audit-log refactor that established the layering); also enshrined "Hono middleware lives in `src/middleware/`, not in feature modules" alongside `require-staff.ts`.
+- **What's now possible**:
+  - Forks pick a signup mode at fork time without ripping out the other path.
+  - Team products can create / list / fetch orgs, manage memberships, and issue / accept invites without touching better-auth's surface beyond the existing signup/signin/signout.
+  - Audit log captures every org governance event today; future SPA admin views can read straight off the existing `/api/audit-log` endpoints.
+- **Deferred** (explicit follow-ups):
+  - Soft-delete on Organisation (30-day restore window) — own ticket alongside the org-delete UI.
+  - DB-level invariant — a user with `staffRole != null` cannot be in any membership. Postgres `CHECK` constraint plus service-layer assertion.
+  - `assertCan(membership, action)` / `packages/auth` extraction — happens at the second consumer (worker).
+  - Email transport for invitations — own ticket; a worker consumes an `invitation.created` event and renders an SES email.
+  - `apps/internal` org admin UI — own ticket; this PR is API-only.
+  - `apps/web` org settings — `apps/web` doesn't exist yet.
+  - Pretty slugs in URLs, `User.lastVisitedOrganisationId`, bulk invite / CSV import, custom invite expiry.
+
 ## 2026-05-10 — CI workflow reorganisation (split deploy DAG, rename jobs)
 
 - **Branch / PR**: `chore/ci-reorg`
