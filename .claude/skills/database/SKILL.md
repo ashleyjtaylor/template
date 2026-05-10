@@ -34,6 +34,10 @@ Every system-generated identifier — entities (`User`, `Session`, future `Organ
 | `sess_` | Session | `apps/api/src/lib/auth.ts` |
 | `acct_` | Auth account (better-auth) | `apps/api/src/lib/auth.ts` |
 | `veri_` | Email verification token | `apps/api/src/lib/auth.ts` |
+| `aud_` | Audit log row | `apps/api/src/modules/audit-log/service.ts` |
+| `org_` | Organisation | `apps/api/src/modules/organisations/service.ts` |
+| `memb_` | Membership (M:N user↔org with role) | `apps/api/src/modules/organisations/service.ts` |
+| `inv_` | Invitation | `apps/api/src/modules/org-invitations/service.ts` |
 
 ## Column naming
 
@@ -51,6 +55,18 @@ If a future vendor library forces another camelCase island, document the deviati
 - Generated locally via `pnpm exec prisma migrate dev --name <slug>` (apply to dev DB). Apply to test DB via `DB_NAME=template_test pnpm exec prisma migrate deploy`. Same files run in CI's `migrate-db` ECS one-off task against staging.
 - **Inspect the generated SQL before committing.** Prisma occasionally emits no-op or surprising SQL (e.g. converting `SERIAL` to explicit sequence + nextval) that may collide with the existing DB state. Strip noise; keep what actually expresses the schema delta.
 - Once a migration is committed and shipped, **never edit it**. Add a new migration to fix.
+
+## Partial unique indexes
+
+Prisma's schema language can't express partial uniqueness (`UNIQUE ... WHERE ...`). When you need one — e.g. "at most one outstanding invitation per (organisation, email), but accepted/revoked rows don't collide" — generate the migration via `prisma migrate dev` first, then **append** the partial-index SQL to the migration file by hand:
+
+```sql
+CREATE UNIQUE INDEX "invitation_organisation_id_email_pending_key"
+  ON "invitation" ("organisation_id", "email")
+  WHERE "accepted_at" IS NULL AND "revoked_at" IS NULL;
+```
+
+Apply it to the local DB out-of-band (`docker exec -i template-postgres psql -U postgres -d template_dev <<<...`) so dev / file / staging stay in sync. Add a comment in `schema.prisma` near the model noting the partial index lives in the migration. Service code should still pre-check for friendlier 409s — the partial index is the safety net under concurrent writes.
 
 ## Foreign keys + cascades
 
@@ -81,7 +97,7 @@ The column captures the `req_<uuid>` of the HTTP request that created the row. I
 
 ## Audit log
 
-`audit_log` is the **append-only** record of cross-cutting governance events. Lives in `apps/api/src/lib/audit.ts`. **Best-effort writes** (awaited but error-swallowed); never wrap in `prisma.$transaction` with the originating mutation — losing one event is preferable to failing a real user action because of an audit-write bug.
+`audit_log` is the **append-only** record of cross-cutting governance events. The `writeAudit` helper lives in `apps/api/src/modules/audit-log/service.ts`; the `AuditEvent` discriminated union (every action's typed payload) lives next to it in `events.ts`. **Best-effort writes** (awaited but error-swallowed); never wrap in `prisma.$transaction` with the originating mutation — losing one event is preferable to failing a real user action because of an audit-write bug.
 
 ### When to write an event
 
@@ -100,7 +116,7 @@ Don't write for:
 ### How to write
 
 ```ts
-import { writeAudit } from '@/lib/audit.js'
+import { writeAudit } from '@/modules/audit-log/service.js'
 
 // after the mutation has succeeded
 await writeAudit({
@@ -171,7 +187,7 @@ The action and details survive — identity is erased. Personal fields inside `d
 
 ### Source of truth: the action union
 
-Every audit action lives as a member of the `AuditEvent` discriminated union in `apps/api/src/lib/audit.ts`. To add one:
+Every audit action lives as a member of the `AuditEvent` discriminated union in `apps/api/src/modules/audit-log/events.ts`. To add one:
 
 1. Add the new union member with the typed payload fields.
 2. Add a caller (`writeAudit({ action: '...', ... })`) at the mutation site.

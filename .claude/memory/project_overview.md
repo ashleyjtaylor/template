@@ -97,10 +97,10 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 ### Tenancy: organisations + memberships (many-to-many)
 
-- Users can belong to multiple organisations. Sign-up creates a personal organisation by default.
-- A user's "active org" is part of session state.
-- **Invitations**: email-based, token tied to org + email, token redeemed on acceptance.
-- Organisation deletion: owner-only, soft-delete with 30-day restore window, then hard-delete (cancels Stripe sub, deletes uploads, anonymises in audit log to preserve referential integrity).
+- Users can belong to multiple organisations. **Two signup paths** ship today: standard `POST /api/auth/sign-up/email` creates a user only (for single-user-product forks); composite `POST /api/orgs/sign-up` (body adds `organisationName`) creates a user + org + owner membership atomically (for team-product forks). No personal-org-on-signup auto-create — orgless authenticated users are a real state in the standard-signup flow.
+- **Active org = whatever's in the URL.** Org-scoped routes are `/api/orgs/:orgId/...`. There is no server-side active-org session field; SPAs query `Membership` (via `GET /api/orgs`) for the user's org list and route accordingly.
+- **Invitations**: email-based, sha256-hashed token, tied to (org, email), redeemed on acceptance. The raw token is delivered exactly once in the create response (`link: '/accept-invite?token=…'`); SES isn't wired so the inviter currently sends out-of-band. A partial unique index enforces "at most one outstanding invite per (org, email)".
+- Organisation deletion: owner-only, soft-delete with 30-day restore window, then hard-delete (cancels Stripe sub, deletes uploads, anonymises in audit log to preserve referential integrity). Deferred — not in the foundations PR.
 
 ### Roles + authorisation
 

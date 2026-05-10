@@ -102,6 +102,23 @@ The middleware writes the resolved `staffSession` onto the Hono context (`c.get(
 
 The middleware does NOT differentiate between the three staff roles today — `support`, `engineer`, and `admin` all pass. When per-role gates appear (e.g. only `admin` can change billing plans), add a `requireStaffRole('admin')` factory that wraps `requireStaff`; don't reach for `assertCan` / membership-style permissions for staff actions.
 
+## Org membership gates (`requireSession`, `requireMember`, `requireAdmin`, `requireOwner`)
+
+Three middlewares in `apps/api/src/middleware/require-org-role.ts` gate org-scoped routes by the caller's `Membership.role` for the `:orgId` URL param: `requireMember` (any role), `requireAdmin` (admin or owner), `requireOwner` (owner only). They call `getMembership` from the orgs service, throw **404** when the org doesn't exist OR the caller isn't a member (no enumeration), and **403** when the caller is a member but lacks the role. On success they stash both the resolved `authSession` and `orgMembership` on the Hono context.
+
+`apps/api/src/middleware/require-session.ts` exports `requireSession` for routes that need an authed user but no org context (e.g. `POST /api/orgs`). It loads the better-auth session via `auth.api.getSession` and stashes `authSession` (with `userId`, `userEntityId`, `email`).
+
+These mount cleanly under parent routes that define `:orgId` — Hono passes parent params to children, so `app.route('/api/orgs/:orgId/invitations', orgInvitationRoutes)` lets `requireAdmin` inside `orgInvitationRoutes` read `c.req.param('orgId')`.
+
+## Composite team-signup endpoint (`/api/orgs/sign-up`)
+
+The template ships **two signup paths** to support both single-user and team-product forks:
+
+- **Standard** — the existing `POST /api/auth/sign-up/email` (better-auth) creates a user only. Use this when the product doesn't have a tenancy model.
+- **Composite team-signup** — `POST /api/orgs/sign-up` (in `apps/api/src/modules/organisations/`) takes the standard signup body plus `organisationName`, calls `auth.api.signUpEmail` server-side with `asResponse: true`, and on success calls `service.createOrg` to create the org + owner membership in one DB transaction. The route returns better-auth's `set-cookie` header verbatim alongside our `{ user, organisation, membership }` JSON. **On signup failure the route forwards better-auth's response as-is** (e.g. 422 for `FAILED_TO_CREATE_USER` on duplicate email) — keep this passthrough rather than translating into our error envelope, so the SPA can render the same copy regardless of which path it took.
+
+The composite route's body is `.strict()` so unknown fields like `inviteToken` are rejected (400). Invited signups go through the **standard** path — once authenticated they call `POST /api/invitations/:token/accept` to consume the invite. Don't bake invite-acceptance into the signup endpoint.
+
 ## Bootstrapping the first staff user
 
 There is no public route to set `staffRole` (the `input: false` on `additionalFields` blocks the auth API). The `bootstrap-staff` script is the **only** path that promotes a user to staff:
@@ -125,8 +142,8 @@ Better-auth 1.6.x hardcodes a couple of things you can't config away. Document n
 
 ## What's deferred (don't add until needed)
 
-- `requireAuth` middleware + `getCurrentUser` helper — ship with the first protected route, not preemptively (rule: no helpers under three call sites)
-- Email verification / magic link / password reset — need an email transport (SES not wired)
+- Email verification / magic link / password reset — need an email transport (SES not wired). Once SES lands, an email worker consumes `invitation.created` events and renders the invite link from the create-response shape we already return.
+- `assertCan(membership, action)` / `packages/auth` extraction — happens at the second consumer (worker). Today the role gates are inline in `require-org-role.ts`.
 - OAuth providers (Google, GitHub, etc.)
 - 2FA (TOTP) — staff sessions will require it (per `project_overview.md`); end-user 2FA optional
 - Organisations + memberships
