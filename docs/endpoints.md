@@ -126,6 +126,8 @@ Tokens are 32 random bytes, base64url-encoded (~43 chars). The raw token is **ne
 | Flow | Expected | Actual |
 |---|---|---|
 | Accepting an invite while already a member of that org | 409 | **200** with `alreadyMember: true` (the user-facing outcome — "you're a member" — is true either way; tossing 409 makes UX worse) |
+
+The `link` returned from create-invitation is a relative path: it's rendered by `apps/web` at the `/accept-invite?token=…` route, which calls the public preview and authed accept endpoints above. The consumer (inviter copying the link, or a future SES email worker) prefixes the `apps/web` host. `apps/internal` does not implement this route — invite acceptance is a customer surface, not a staff one.
 | Expired invite | 410 Gone | **409** `Expired` (we use 409 for every invite-state mismatch for consistency) |
 | Revoked invite | 410 / 404 | **409** `AlreadyRevoked` |
 

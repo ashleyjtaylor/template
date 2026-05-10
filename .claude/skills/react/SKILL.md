@@ -30,6 +30,8 @@ apps/<spa>/src/
 
 **Cross-module imports go through `modules/<feature>`**, not into `<feature>/components/` directly. The module's public surface is what the folder root re-exports.
 
+**Shared modules across SPAs.** When a domain-agnostic module (`session`, `theme`) is needed in a second SPA, **duplicate first** and extract to `packages/<name>/` once both copies actually exist — same package-extraction-at-second-consumer rule as `packages/*` everywhere else. Drawing the package boundary against a single consumer is guesswork; against two it's informed. `apps/web` and `apps/internal` currently each carry their own `modules/session/` and `modules/theme/` for exactly this reason.
+
 ## File-based routing (TanStack Router)
 
 - Route files live at `apps/<spa>/src/routes/<path>.tsx`. Dot-notation creates parent/child layouts. Trailing underscore on a segment opts out of nesting (`audit_.$entityId.tsx` is a flat sibling of `audit.tsx`, not a child) — useful when two pages share a URL prefix but not a layout.

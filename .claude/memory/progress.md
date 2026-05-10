@@ -12,6 +12,35 @@ Each entry: date, ref(s), what landed, what's now possible, what's deferred.
 
 ---
 
+## 2026-05-10 — `apps/web` foundation: customer SPA scaffold + auth flows + accept-invite
+
+- **Branch / PR**: `feat/web-app-foundation`
+- **Plan**: `docs/tickets/11-web-app-foundation.md`
+- **What landed**:
+  - **Empty Vite + TanStack Router + Tailwind 4 + shadcn/ui scaffold** at `apps/web/`. Same config shape as `apps/internal` (tsconfig, vite, vitest, components.json, index.css with the full token set). Local port **5174** so both SPAs run side-by-side under `pnpm dev`.
+  - **Two duplicated modules** copied from `apps/internal`: `modules/session/` (`useSession`, `useSignIn`, `useSignUp`, `useSignUpTeam`, `useSignOut` — the three middle ones are new mutation hooks) and `modules/theme/` (verbatim copy with `STORAGE_KEY` renamed to `web:theme`). One new module: `modules/invitations/` (`usePreviewInvite` + `useAcceptInvite`).
+  - **Sidebar layout matching `apps/internal`** — brand wordmark "App", single Home nav item, env+SHA badge, user menu with theme switcher + sign-out. The customer flavour drops the `staffRole` pill from `UserMenu`.
+  - **Auth gate in `__root.tsx`** copied from `apps/internal` with an expanded `UNAUTHED_PATHS` (`/login`, `/signup`, `/team-signup`, `/accept-invite`).
+  - **Four auth pages** sharing a new `AuthCardLayout` + `AuthField` helper (avoids four copies of the dot-grid card shell):
+    - `/login` — email + password.
+    - `/signup` — standard `POST /api/auth/sign-up/email`. The "team workspace" CTA is promoted to a dashed-border accent row below the form (icon + arrow), separate from the sign-in footer link.
+    - `/team-signup` — composite `POST /api/orgs/sign-up`. Mirror "personal sign-up" CTA back to `/signup`.
+    - `/accept-invite?token=…` — public preview via `GET /api/invitations/:token`; if signed in with the matching email, accept via `POST /api/invitations/:token/accept` and navigate to `/`. Branches on (no session / wrong email / terminal status / pending) with appropriate copy and CTAs.
+  - **CDK** (`infra/cdk/lib/app-stack.ts`) — second CloudFront distribution + private S3 bucket (`${PRODUCT}-${envName}-web-spa`) sharing the same `/api/*` ALB origin and the same SPA-routing 404/403 → `index.html` rewrite. `CORS_ORIGINS` on the API container is now a comma-joined list of both CloudFront URLs so better-auth's Origin check accepts requests from either SPA. `BETTER_AUTH_URL` stays single-valued (the internal CF) — single canonical base for OAuth callbacks / email links once SES lands. New CFN outputs: `WebSpaUrl`, `WebSpaBucketName`, `WebSpaDistributionId`.
+  - **CI** (`.github/workflows/`) — new `build-web-app` PR sanity job in `ci.yml`; new `build-web-app` artifact + `deploy-web-spa` jobs in `deploy-staging.yml` (sequenced after `deploy-app-stack`); the `smoke` step now iterates over both CloudFront URLs and asserts each serves `id="root"`.
+  - **Tests**: 6 unit tests (theme provider) copied from `apps/internal`. No SPA-side integration / Playwright in this PR — the API integration tests already cover the endpoints, the PR-time `build-web-app` job covers compilation, and the deploy smoke covers "the bundle is being served".
+- **What's now possible**:
+  - Customer journey: sign up (personal or team) → land on dashboard. Open an `/accept-invite?token=…` link in a browser to consume an org invitation. The orgs PR's link contract finally has a renderer.
+  - Forks pick the signup mode at fork time without ripping out the other path — both pages stay live, the landing CTA points wherever the product wants.
+- **Deferred** (explicit follow-ups):
+  - **Extract `session` + `theme`** to `packages/spa-shared/` (or per-concern packages). Both copies now exist; extraction PR is informed by both call sites.
+  - **OAuth providers, forgot password, verify email, magic link** — need SES.
+  - **"My orgs" dashboard / per-org URL space** (`/orgs/:orgId/...`) — own ticket once a real per-org feature motivates the routes.
+  - **Paywall / `/onboarding/subscribe`** — needs Stripe.
+  - **Account settings** (change password, delete account, list active sessions).
+  - **Real DNS** (`app.staging.acme.io`).
+  - **Playwright E2E**.
+
 ## 2026-05-10 — Organisations: foundations + invites + role management
 
 - **Branch / PR**: `feat/api-organisations`

@@ -9,8 +9,10 @@ This document only covers **staging** at the moment. Production stacks are *defi
 ```mermaid
 graph TB
     Internet((Internet))
-    CF["CloudFront<br/>internal SPA distribution"]
-    SpaBucket[("S3<br/>template-staging-internal-spa<br/>private, OAC")]
+    InternalCF["CloudFront<br/>apps/internal distribution"]
+    WebCF["CloudFront<br/>apps/web distribution"]
+    InternalSpaBucket[("S3<br/>template-staging-internal-spa<br/>private, OAC")]
+    WebSpaBucket[("S3<br/>template-staging-web-spa<br/>private, OAC")]
 
     subgraph VPC["VPC — 10.0.0.0/16, eu-west-1, 2 AZs"]
         subgraph PublicSubnets["Public subnets"]
@@ -31,9 +33,12 @@ graph TB
     AppSecrets["Secrets Manager<br/>template-staging-app-secrets<br/>(betterAuthSecret, ...)"]
 
     Internet -->|HTTP :80| ALB
-    Internet -->|HTTPS :443| CF
-    CF -->|S3 origin<br/>default behaviour| SpaBucket
-    CF -->|ALB origin<br/>/api/*| ALB
+    Internet -->|HTTPS :443| InternalCF
+    Internet -->|HTTPS :443| WebCF
+    InternalCF -->|S3 origin<br/>default behaviour| InternalSpaBucket
+    InternalCF -->|ALB origin<br/>/api/*| ALB
+    WebCF -->|S3 origin<br/>default behaviour| WebSpaBucket
+    WebCF -->|ALB origin<br/>/api/*| ALB
     ALB -->|target group<br/>health: GET /health| ECS
     ECS -->|Postgres :5432| RDS
     Migrator -->|prisma migrate deploy| RDS
@@ -61,7 +66,7 @@ graph TB
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
 - `template-staging-data` — ECR repo, RDS Postgres, Secrets Manager DB credentials + app-secrets, ECS cluster, migrator + bootstrap-staff task definitions and their log groups
-- `template-staging-app` — Fargate service, API task def, ALB, target group, listener, API log group, internal SPA S3 bucket + CloudFront distribution
+- `template-staging-app` — Fargate service, API task def, ALB, target group, listener, API log group, internal + web SPA S3 buckets + CloudFront distributions (one per SPA)
 
 All stacks have `terminationProtection: false` so `cdk destroy "template-staging-*"` tears them down without manual intervention.
 
@@ -73,31 +78,35 @@ Per-route documentation lives in [`docs/endpoints.md`](endpoints.md) — request
 
 Two workflow files own the staging deploy story:
 
-- **`.github/workflows/ci.yml`** — PR + push validation only. Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-internal-app` (PR sanity).
+- **`.github/workflows/ci.yml`** — PR + push validation only. Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-internal-app` (PR sanity), `build-web-app` (PR sanity).
 - **`.github/workflows/deploy-staging.yml`** — `workflow_dispatch`-only deploy DAG.
 
 ```mermaid
 graph LR
     Trigger[workflow_dispatch on main] --> Network[deploy-network-data]
     Network -->|cdk deploy<br/>network + data<br/>-c imageTag=sha| BuildApi[build-api-image]
-    Trigger --> BuildSpa[build-internal-app]
+    Trigger --> BuildInternal[build-internal-app]
+    Trigger --> BuildWeb[build-web-app]
     BuildApi -->|docker build<br/>push :sha to ECR| Migrate[migrate-db]
     Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| AppStack[deploy-app-stack]
     AppStack -->|cdk deploy app| InternalSpa[deploy-internal-spa]
-    BuildSpa -->|vite build<br/>upload bundle artifact| InternalSpa
+    AppStack --> WebSpa[deploy-web-spa]
+    BuildInternal -->|vite build<br/>upload bundle artifact| InternalSpa
+    BuildWeb -->|vite build<br/>upload bundle artifact| WebSpa
     InternalSpa -->|S3 sync + CloudFront invalidate| Smoke[smoke]
+    WebSpa -->|S3 sync + CloudFront invalidate| Smoke
     AppStack --> Smoke
-    Smoke -->|curl ALB /health<br/>curl CloudFront /| Done([deployed])
+    Smoke -->|curl ALB /health<br/>curl each CloudFront /| Done([deployed])
 ```
 
 - The deploy DAG is `workflow_dispatch`-only (manual trigger from the Actions tab). Operator discipline: trigger only after the green check from `ci.yml` on the same SHA. There is no in-workflow gate yet — see `docs/tickets/09-ci-workflow-reorg.md` for when to add one.
 - AWS access via OIDC (`AWS_DEPLOY_ROLE_ARN` in the `staging` GitHub Environment).
 - `deploy-network-data` passes `imageTag` so the migrator + bootstrap-staff task definitions reference the SHA `build-api-image` is about to push. CFN doesn't validate ECR image existence at deploy time, so referring to a not-yet-pushed tag is fine.
-- `build-internal-app` runs in parallel with everything that doesn't need it; the artifact is consumed by `deploy-internal-spa`. Each future SPA gets its own `build-<name>` + `deploy-<name>-spa` pair.
+- `build-internal-app` and `build-web-app` run in parallel with everything that doesn't need them; each artifact is consumed by the matching `deploy-<name>-spa` job. Future SPAs (`apps/portal` etc.) follow the same `build-<name>` + `deploy-<name>-spa` pair.
 - `migrate-db` invokes `aws ecs run-task` against the migrator task definition, waits for it to stop, and fails the workflow on a non-zero exit (dumping the last 5 minutes of `/ecs/template-staging-migrator` logs).
 - `deploy-app-stack` uses `cdk deploy --exclusively` so it does not re-confirm the network and data stacks.
-- `deploy-internal-spa` downloads the SPA artifact, two-pass-syncs it to S3 (long-cache + immutable for hashed assets, no-cache for `index.html`), and invalidates `/` + `/index.html` on CloudFront. Sequenced after `deploy-app-stack` so the distribution exists.
-- The smoke step polls the ALB `/health` for up to 5 minutes (asserting `version` matches the pushed SHA) and curls CloudFront for the SPA shell (asserting the response contains `id="root"`).
+- `deploy-internal-spa` and `deploy-web-spa` download their respective artifacts, two-pass-sync to S3 (long-cache + immutable for hashed assets, no-cache for `index.html`), and invalidate `/` + `/index.html` on the matching CloudFront distribution. Both sequenced after `deploy-app-stack` so the distributions exist.
+- The smoke step polls the ALB `/health` for up to 5 minutes (asserting `version` matches the pushed SHA) and iterates over each CloudFront distribution, asserting the response contains `id="root"`.
 
 ### bootstrap-staff (sibling workflow)
 
@@ -114,7 +123,7 @@ Stripe / SES / Sentry / OAuth providers will get their own subsection here as th
 These are designed for in `project_overview.md` but absent from the live system:
 
 - **Data**: ElastiCache Redis, S3 (uploads). (Application-level Secrets Manager secret `${PRODUCT}-${env}-app-secrets` IS deployed and currently holds `betterAuthSecret`; future fields like `stripeSecretKey` add to the same JSON document.)
-- **Edge**: Route53, ACM, HTTPS on the ALB, custom domain. (CloudFront IS deployed for the internal SPA — backed by an S3 origin for `/*` and the ALB origin for `/api/*`. Route53 + ACM still pending so the SPA is served from the CloudFront default `*.cloudfront.net` domain.)
+- **Edge**: Route53, ACM, HTTPS on the ALB, custom domain. (CloudFront IS deployed — one distribution per SPA, each backed by an S3 origin for `/*` and the ALB origin for `/api/*`. Route53 + ACM still pending so each SPA is served from its CloudFront default `*.cloudfront.net` domain.)
 - **Apps**: `apps/worker` (BullMQ consumer), `apps/web`, `apps/portal`. (`apps/internal` IS deployed: login + audit-log list/detail behind a `staffRole` gate.)
 - **Packages**: `packages/auth` (better-auth wired inline at `apps/api/src/lib/auth.ts` until a second consumer arrives), `packages/db`, `packages/billing`, `packages/errors`, `packages/types`, `packages/schemas`, etc.
 - **Workflows**: `deploy-production.yml`, promote-by-image cross-env retag

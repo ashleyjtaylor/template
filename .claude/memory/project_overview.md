@@ -80,6 +80,8 @@ Tooling: **pnpm** (workspaces) + **Turborepo** (task graph + caching) + **Biome*
 
 `apps/internal` ships with a persistent sidebar layout — brand wordmark, nav links (Home, Audit log), env+SHA badge driven by `/health`, three-state theme switcher (light / dark / system, persisted in localStorage), and a UserMenu with sign-out. A single `AuthGate` at `__root.tsx` runs the redirect logic via `useSession()` (wraps `GET /api/auth/get-session`); per-page 401 effects are not needed. Home is a placeholder dashboard with TBD widget cards.
 
+`apps/internal` and `apps/web` ship with similar shape — same Vite + TanStack Router + Tailwind 4 + shadcn stack, same sidebar layout, same auth gate, same `modules/session/` and `modules/theme/` modules (currently duplicated; extraction to a shared package lands at the second-consumer threshold). `apps/web` adds `modules/invitations/` for the public preview + authed accept of org invitation links, plus four auth pages: `/login`, `/signup` (calls `/api/auth/sign-up/email`), `/team-signup` (calls `/api/orgs/sign-up`, composite), and `/accept-invite?token=…`. The two SPAs sit behind their own CloudFront distributions sharing one ALB; the API's `CORS_ORIGINS` allowlists both distribution URLs.
+
 ---
 
 ## Identity & access
