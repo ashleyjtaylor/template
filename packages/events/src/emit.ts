@@ -20,7 +20,7 @@ export interface EmitOptions {
  * in apps/worker; this function only knows about queues.
  *
  * - Inside a transaction (`{ tx }`): inserts an outbox row in the same
- *   transaction. The `outbox-drain` repeatable job picks it up after commit.
+ *   transaction. The `outbox-publisher` repeatable job picks it up after commit.
  * - Outside a transaction: enqueues to the destination queue immediately.
  */
 export async function emit(event: DomainEvent, options: EmitOptions = {}): Promise<void> {

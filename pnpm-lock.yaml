@@ -220,6 +220,46 @@ importers:
         specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.11(@types/node@24.12.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0))
 
+  apps/worker:
+    dependencies:
+      '@template/db':
+        specifier: workspace:*
+        version: file:packages/db(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
+      '@template/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
+      '@template/events':
+        specifier: workspace:*
+        version: link:../../packages/events
+      bullmq:
+        specifier: 5.76.7
+        version: 5.76.7
+      ioredis:
+        specifier: 5.10.1
+        version: 5.10.1
+      pino:
+        specifier: 10.3.1
+        version: 10.3.1
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.12.3
+        version: 24.12.3
+      pino-pretty:
+        specifier: 13.1.3
+        version: 13.1.3
+      tsc-alias:
+        specifier: 1.8.17
+        version: 1.8.17
+      tsx:
+        specifier: 4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   infra/cdk:
     dependencies:
       aws-cdk-lib:

@@ -2,8 +2,8 @@ import { prisma } from '@template/db'
 import { getQueue } from './queue-store.js'
 import type { QueueName } from './queues.js'
 
-// Bounded batch size per drain tick. Keeps individual iterations short so the
-// 1s repeatable cadence stays predictable and the failure blast radius is
+// Bounded batch size per publisher tick. Keeps individual iterations short so
+// the 1s repeatable cadence stays predictable and the failure blast radius is
 // limited.
 const BATCH = 100
 
@@ -12,17 +12,17 @@ const BATCH = 100
  * recorded `target_queue`. Marks rows processed on success; on failure,
  * increments `attempts` and stores `last_error` for the next tick to retry.
  *
- * Called by the worker's repeatable `outbox-drain` job (cadence configured at
- * registration time in apps/worker).
+ * Called by the worker's repeatable `outbox-publisher` job (cadence
+ * configured at registration time in apps/worker).
  */
-export async function drainOutbox(): Promise<{ drained: number; failed: number }> {
+export async function publishOutbox(): Promise<{ published: number; failed: number }> {
   const rows = await prisma.outbox.findMany({
     where: { processedAt: null },
     orderBy: { createdAt: 'asc' },
     take: BATCH
   })
 
-  let drained = 0
+  let published = 0
   let failed = 0
 
   for (const row of rows) {
@@ -32,7 +32,7 @@ export async function drainOutbox(): Promise<{ drained: number; failed: number }
         where: { entityId: row.entityId },
         data: { processedAt: new Date() }
       })
-      drained++
+      published++
     } catch (err) {
       await prisma.outbox.update({
         where: { entityId: row.entityId },
@@ -45,5 +45,5 @@ export async function drainOutbox(): Promise<{ drained: number; failed: number }
     }
   }
 
-  return { drained, failed }
+  return { published, failed }
 }

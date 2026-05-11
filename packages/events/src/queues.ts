@@ -4,7 +4,7 @@ import type { DomainEvent } from './types.js'
 // (e.g. `emails`, `webhooks`) here when those features land.
 export const QueueName = {
   internal: 'internal',
-  outboxDrain: 'outbox-drain',
+  outboxPublisher: 'outbox-publisher',
   schedules: 'schedules'
 } as const
 

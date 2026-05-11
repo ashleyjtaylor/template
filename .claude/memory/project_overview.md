@@ -229,7 +229,7 @@ Webhook handlers are **idempotent by event id** — duplicate deliveries are no-
 ### Job queue: BullMQ + Redis
 
 - `apps/worker` consumes BullMQ queues; ECS service alongside `apps/api`, sharing `packages/services` so business logic is written once.
-- Per-queue concurrency caps configurable via `WORKER_QUEUE_<NAME>_CONCURRENCY` env vars. Template ships three queues: `internal` (default fan-out, 5), `outbox-drain` (singleton, 1), `schedules` (repeatables, 3). Forks add queues per-feature (`emails` typically 5, `webhooks` typically 10) by editing `packages/events/queues.ts`.
+- Per-queue concurrency caps configurable via `WORKER_QUEUE_<NAME>_CONCURRENCY` env vars. Template ships three queues: `internal` (default fan-out, 5), `outbox-publisher` (singleton, 1), `schedules` (repeatables, 3). Forks add queues per-feature (`emails` typically 5, `webhooks` typically 10) by editing `packages/events/queues.ts`.
 - **Dead-letter queue** for jobs that exhaust retries; CloudWatch alarm on DLQ depth > 0.
 - **Bull Board** mounted in `apps/api` at `/api/admin/queues` behind `requireStaff` — `apps/internal` sidebar links to it (opens new tab). `/api/admin/*` is the namespace for staff-only operational tools, distinct from feature data routes like `/api/audit-log`.
 - Idempotency: every job handler treats itself as idempotent on `jobId`.
@@ -237,7 +237,7 @@ Webhook handlers are **idempotent by event id** — duplicate deliveries are no-
 ### Events
 
 - **In-process bus** (`packages/events`): typed `DomainEvent` union, `events.emit()` looks up subscribers in a registry and either calls in-process or enqueues a BullMQ job per the subscriber's declared transport. Handlers are transport-agnostic.
-- **Outbox pattern** for events emitted from within a DB transaction: `events.emit(event, { tx })` INSERTs an `outbox` row in the same transaction; a 1s BullMQ repeatable drainer (`outbox-drain` queue) pulls unprocessed rows post-commit and enqueues them to their target queues. Eliminates the dual-write problem (DB committed but publish failed, or vice versa). Direct `queue.add()` is reserved for external boundary crossings (incoming webhooks) — internal work goes through `events.emit()`.
+- **Outbox pattern** for events emitted from within a DB transaction: `events.emit(event, { tx })` INSERTs an `outbox` row in the same transaction; a 1s BullMQ repeatable publisher (`outbox-publisher` queue) pulls unprocessed rows post-commit and enqueues them to their target queues. Eliminates the dual-write problem (DB committed but publish failed, or vice versa). Direct `queue.add()` is reserved for external boundary crossings (incoming webhooks) — internal work goes through `events.emit()`.
 
 ### Scheduled / cron jobs
 

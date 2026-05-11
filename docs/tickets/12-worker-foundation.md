@@ -21,13 +21,13 @@ outbox
   request_id    text  nullable
   topic         text  the event type, e.g. 'invitation.created'
   payload       jsonb
-  target_queue  text  which BullMQ queue receives the drained job
+  target_queue  text  which BullMQ queue receives the published job
   created_at    timestamptz default now()
-  processed_at  timestamptz nullable until drained
+  processed_at  timestamptz nullable until published
   attempts      int default 0
   last_error    text nullable
 
-index (processed_at, created_at)   -- drainer pull
+index (processed_at, created_at)   -- publisher pull
 ```
 
 No other schema changes.
@@ -52,7 +52,7 @@ No other schema changes.
 - `events.on(type, handler, { queue })` — subscriber registration API
 - BullMQ `Queue` instances (one per named queue) and queue-name constants
 - Shared `IORedis` connection factory
-- Outbox drainer implementation (a reusable repeatable job)
+- Outbox publisher implementation (a reusable repeatable job)
 - Routing logic: given an event + its registered subscribers, enqueue to the right queues
 
 **Deferred packages** (single-consumer today): `packages/auth`, `packages/jobs` (typed payload schemas for external commands), `packages/services`.
@@ -74,7 +74,7 @@ events.on('invitation.created', invitationCreatedHandler, { queue: 'internal' })
 | Queue          | Purpose                                            | Concurrency | Retries                            |
 | -------------- | -------------------------------------------------- | ----------- | ---------------------------------- |
 | `internal`     | Default fan-out for events with no specific channel | 5           | 3, exponential backoff (1s, 5s, 25s) |
-| `outbox-drain` | 1s repeatable drainer (singleton)                  | 1           | 3                                  |
+| `outbox-publisher` | 1s repeatable publisher (singleton)                | 1           | 3                                  |
 | `schedules`    | Repeatable schedule executions                     | 3           | 3                                  |
 
 Per-queue concurrency configurable via `WORKER_QUEUE_<NAME>_CONCURRENCY` env vars. Forks add queues by editing `packages/events/queues.ts` — e.g. `emails` (typically 5), `webhooks` (typically 10) land with their respective feature PRs.
@@ -127,15 +127,15 @@ External services not introduced in this PR: SES, S3 uploads, Sentry — deferre
 **Unit (Vitest, no I/O):**
 
 - `packages/events`: `emit()` routing with and without `{ tx }`; subscriber registration; queue mapping.
-- Outbox drainer logic (mocked Prisma + Queue).
+- Outbox publisher logic (mocked Prisma + Queue).
 - Cleanup schedule SQL builder.
 - Graceful-shutdown sequencing.
 
 **Integration (real Postgres + Redis service containers in CI):**
 
-- `emit(event, { tx })` inside a transaction → outbox row → drainer tick → subscriber fires once.
+- `emit(event, { tx })` inside a transaction → outbox row → publisher tick → subscriber fires once.
 - `emit(event)` outside a transaction → BullMQ enqueue → subscriber fires.
-- Drainer idempotent — re-tick doesn't double-deliver.
+- Publisher idempotent — re-tick doesn't double-deliver.
 - Heartbeat schedule fires on its configured interval.
 - Cleanup schedule deletes matching invitations, leaves others alone.
 - Bull Board route: staff session 200, unauth 401, non-staff 403.
