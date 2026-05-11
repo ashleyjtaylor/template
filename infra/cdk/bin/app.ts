@@ -29,6 +29,7 @@ for (const env of envs) {
     envName: env,
     vpc: network.vpc,
     rdsSg: network.rdsSg,
+    redisSg: network.redisSg,
     imageTag
   })
 
@@ -39,9 +40,12 @@ for (const env of envs) {
     albSg: network.albSg,
     ecsSg: network.ecsSg,
     apiRepo: data.apiRepo,
+    workerRepo: data.workerRepo,
     cluster: data.cluster,
     dbSecrets: data.dbSecrets,
     appSecrets: data.appSecrets,
+    redisHost: data.redisHost,
+    redisPort: data.redisPort,
     imageTag
   })
 }
