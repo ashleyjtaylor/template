@@ -1,6 +1,6 @@
+import { ValidationError } from '@template/errors'
 import { type Context, Hono } from 'hono'
 import { z } from 'zod'
-import { ValidationError } from '@/lib/errors.js'
 import { requireAdmin, requireMember, requireOwner } from '@/middleware/require-org-role.js'
 import { requireSession } from '@/middleware/require-session.js'
 import {

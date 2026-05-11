@@ -1,6 +1,6 @@
-import type { Membership } from '@prisma/client'
+import type { Membership } from '@template/db'
+import { ForbiddenError, NotFoundError } from '@template/errors'
 import { createMiddleware } from 'hono/factory'
-import { ForbiddenError, NotFoundError } from '@/lib/errors.js'
 import { type AuthSession, getAuthSession } from '@/middleware/require-session.js'
 import type { Role } from '@/modules/organisations/schemas.js'
 import { getMembership } from '@/modules/organisations/service.js'

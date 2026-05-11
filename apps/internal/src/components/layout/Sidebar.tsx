@@ -1,4 +1,4 @@
-import { Home, ScrollText } from 'lucide-react'
+import { Home, Layers, ScrollText } from 'lucide-react'
 import { ThemeToggle } from '@/modules/theme/ThemeToggle'
 import { EnvBadge } from './EnvBadge'
 import { NavItem } from './NavItem'
@@ -21,6 +21,9 @@ export function Sidebar() {
         </NavItem>
         <NavItem to="/audit" icon={ScrollText}>
           Audit log
+        </NavItem>
+        <NavItem to="/api/admin/queues" icon={Layers} external>
+          Queues
         </NavItem>
       </nav>
 

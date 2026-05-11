@@ -25,7 +25,7 @@ sequenceDiagram
     ALB-->>Client: 200 { status, version, env, uptime }
 ```
 
-`version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `env` is `'development' | 'staging' | 'production'` — the deployed AWS environment, sourced from the `APP_ENV` env var that CDK injects (distinct from `NODE_ENV`, which is `'production'` on both staging and prod). `uptime` is process uptime in whole seconds. The SPA reads `env` + `version` to render the env+SHA badge in the sidebar so staff can see at a glance which deployed binary they are talking to. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
+`version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `env` is `'local' | 'staging' | 'production'` — the deployed AWS environment, sourced from the `APP_ENV` env var that CDK injects (distinct from `NODE_ENV`, which is `'production'` on both staging and prod). `uptime` is process uptime in whole seconds. The SPA reads `env` + `version` to render the env+SHA badge in the sidebar so staff can see at a glance which deployed binary they are talking to. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
 
 ## `/health/ready`
 
@@ -80,6 +80,18 @@ Read-only views over the `audit_log` table. Gated by the `requireStaff` middlewa
 | `/api/audit-log/:entityId` | GET | Single event by `aud_…` entityId. **404** if the row does not exist. |
 
 Each row response includes `actorUser` (joined from `User` by `actorUserId`) and `actorImpersonator` (when set). The `details` JSON column is returned as-is — see the `database` skill for what is and isn't safe to put there.
+
+## `/api/admin/*`
+
+Staff-only operational tools, distinct from feature data routes like `/api/audit-log`. Gated by `requireStaff` — every route under this prefix returns **401** without a session, **403** if the session's `staffRole` is `null`.
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/admin/queues` | GET (and Bull Board's internal PUT / POST / DELETE for retry / clean / obliterate) | Bull Board dashboard for the BullMQ queues this template ships with — `internal`, `outbox-publisher`, `schedules`. Inspect jobs, retry failures, drill into payloads. Sub-routes registered by Bull Board: `/api/queues` (JSON), `/queue/:queueName/:jobId` (job detail), `/static/*` (assets). Forks add queues by appending to the list in `apps/api/src/modules/admin/queues.ts`. |
+
+The canonical entry path is `/api/admin/queues` **without** a trailing slash — that's the route Bull Board registers as `/` on its inner Hono app and where the `apps/internal` sidebar links to. The trailing-slash variant (`/api/admin/queues/`) would 404 because Hono treats the two as distinct routes, so we apply the `trimTrailingSlash()` middleware in `app.ts` to 301-redirect those requests to the canonical form. Bull Board itself emits `<base href="/api/admin/queues/">` in the HTML so relative asset URLs in the bundle resolve correctly regardless of which path the user landed on.
+
+Bull Board renders its own server-side HTML, so the sidebar link opens in a new tab rather than navigating the SPA.
 
 ## `/api/orgs/*`
 

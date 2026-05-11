@@ -15,6 +15,7 @@ import {
   FargateTaskDefinition,
   LogDrivers
 } from 'aws-cdk-lib/aws-ecs'
+import { CfnReplicationGroup, CfnSubnetGroup } from 'aws-cdk-lib/aws-elasticache'
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs'
 import {
   Credentials,
@@ -31,6 +32,7 @@ export interface DataStackProps extends StackProps {
   envName: EnvName
   vpc: Vpc
   rdsSg: SecurityGroup
+  redisSg: SecurityGroup
   imageTag: string
 }
 
@@ -44,6 +46,7 @@ type DbSecrets = {
 
 type AppSecrets = {
   BETTER_AUTH_SECRET: EcsSecret
+  REDIS_AUTH_TOKEN: EcsSecret
 }
 
 // `template` (bare) is a reserved DB name on RDS Postgres because the engine
@@ -56,36 +59,49 @@ const DB_USER = 'template_admin'
 
 export class DataStack extends Stack {
   readonly apiRepo: Repository
+  readonly workerRepo: Repository
   readonly cluster: Cluster
   readonly database: DatabaseInstance
   readonly dbSecrets: DbSecrets
   readonly appSecrets: AppSecrets
+  readonly redisHost: string
+  readonly redisPort: string
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props)
 
-    const { envName, vpc, rdsSg, imageTag } = props
+    const { envName, vpc, rdsSg, redisSg, imageTag } = props
+
+    const ecrLifecycleRules = [
+      {
+        rulePriority: 1,
+        description: 'Keep only the last 30 tagged images',
+        tagStatus: TagStatus.TAGGED,
+        tagPatternList: ['*'],
+        maxImageCount: 30
+      },
+      {
+        rulePriority: 2,
+        description: 'Expire untagged images after 1 day',
+        tagStatus: TagStatus.UNTAGGED,
+        maxImageAge: Duration.days(1)
+      }
+    ]
 
     this.apiRepo = new Repository(this, 'ApiRepo', {
       repositoryName: `${PRODUCT}-${envName}-api`,
       imageScanOnPush: true,
       removalPolicy: RemovalPolicy.DESTROY,
       emptyOnDelete: true,
-      lifecycleRules: [
-        {
-          rulePriority: 1,
-          description: 'Keep only the last 30 tagged images',
-          tagStatus: TagStatus.TAGGED,
-          tagPatternList: ['*'],
-          maxImageCount: 30
-        },
-        {
-          rulePriority: 2,
-          description: 'Expire untagged images after 1 day',
-          tagStatus: TagStatus.UNTAGGED,
-          maxImageAge: Duration.days(1)
-        }
-      ]
+      lifecycleRules: ecrLifecycleRules
+    })
+
+    this.workerRepo = new Repository(this, 'WorkerRepo', {
+      repositoryName: `${PRODUCT}-${envName}-worker`,
+      imageScanOnPush: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+      lifecycleRules: ecrLifecycleRules
     })
 
     this.database = new DatabaseInstance(this, 'Postgres', {
@@ -160,9 +176,56 @@ export class DataStack extends Stack {
       }
     })
 
+    // Redis AUTH token lives in a separate Secrets Manager entry because
+    // generateSecretString can only auto-generate one field per secret; we
+    // need a second auto-generated value alongside betterAuthSecret. ElastiCache
+    // forbids @ " / in AUTH tokens.
+    const redisSecretsRaw = new Secret(this, 'RedisSecrets', {
+      secretName: `${PRODUCT}-${envName}-redis-secrets`,
+      description: 'Redis AUTH token for ElastiCache (used by BullMQ on ECS)',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'redisAuthToken',
+        passwordLength: 64,
+        excludePunctuation: true,
+        excludeCharacters: '@"/'
+      }
+    })
+
     this.appSecrets = {
-      BETTER_AUTH_SECRET: EcsSecret.fromSecretsManager(appSecretsRaw, 'betterAuthSecret')
+      BETTER_AUTH_SECRET: EcsSecret.fromSecretsManager(appSecretsRaw, 'betterAuthSecret'),
+      REDIS_AUTH_TOKEN: EcsSecret.fromSecretsManager(redisSecretsRaw, 'redisAuthToken')
     }
+
+    // ElastiCache (Valkey 8 — Redis-protocol-compatible, AWS's go-forward
+    // engine after Redis's licence change). Staging: single node, t4g.micro,
+    // single-AZ. Production sizing (t4g.small × 2, multi-AZ failover) lives
+    // in a follow-up.
+    const redisSubnetGroup = new CfnSubnetGroup(this, 'RedisSubnetGroup', {
+      description: `Redis subnet group for ${PRODUCT} ${envName}`,
+      subnetIds: vpc.selectSubnets({ subnetType: SubnetType.PRIVATE_WITH_EGRESS }).subnetIds,
+      cacheSubnetGroupName: `${PRODUCT}-${envName}-redis-subnets`
+    })
+
+    const redis = new CfnReplicationGroup(this, 'Redis', {
+      replicationGroupId: `${PRODUCT}-${envName}-redis`,
+      replicationGroupDescription: `${PRODUCT} ${envName} BullMQ`,
+      engine: 'valkey',
+      engineVersion: '8.0',
+      cacheNodeType: 'cache.t4g.micro',
+      numCacheClusters: 1,
+      automaticFailoverEnabled: false,
+      cacheSubnetGroupName: redisSubnetGroup.cacheSubnetGroupName,
+      securityGroupIds: [redisSg.securityGroupId],
+      authToken: redisSecretsRaw.secretValueFromJson('redisAuthToken').unsafeUnwrap(),
+      transitEncryptionEnabled: true,
+      atRestEncryptionEnabled: true,
+      port: 6379
+    })
+    redis.addDependency(redisSubnetGroup)
+
+    this.redisHost = redis.attrPrimaryEndPointAddress
+    this.redisPort = redis.attrPrimaryEndPointPort
 
     const migratorLogGroup = new LogGroup(this, 'MigratorLogs', {
       logGroupName: `/ecs/${PRODUCT}-${envName}-migrator`,
@@ -188,11 +251,16 @@ export class DataStack extends Stack {
       // exits. CI's `aws ecs run-task` invocation doesn't override; this is
       // the canonical command.
       //
-      // Don't prefix with `node` — `.bin/prisma` is a /bin/sh wrapper, not
-      // JS, so `node node_modules/.bin/prisma` errors with "SyntaxError:
-      // missing ) after argument list" on the wrapper's shell syntax. The
-      // wrapper's shebang invokes node on the real JS entry on its own.
-      command: ['node_modules/.bin/prisma', 'migrate', 'deploy', '--schema=./prisma/schema.prisma']
+      // Workspace deps are symlinked (no pnpm deploy / no inject), so the
+      // workspace's full layout is intact in /app. Run prisma from
+      // packages/db so its prisma.config.ts + prisma/schema.prisma resolve
+      // relative to CWD.
+      //
+      // Don't prefix with `node` — `.bin/prisma` is a /bin/sh wrapper, not JS,
+      // so `node node_modules/.bin/prisma` errors with "SyntaxError: missing
+      // ) after argument list" on the wrapper's shell syntax. The wrapper's
+      // shebang invokes node on the real JS entry on its own.
+      command: ['sh', '-c', 'cd packages/db && node_modules/.bin/prisma migrate deploy']
     })
 
     // CFN outputs consumed by the migrate-db CI step.
@@ -252,6 +320,19 @@ export class DataStack extends Stack {
     new CfnOutput(this, 'BootstrapStaffLogGroupName', {
       value: bootstrapStaffLogGroup.logGroupName,
       description: 'Log group for the bootstrap-staff task — tail this on failure'
+    })
+
+    new CfnOutput(this, 'WorkerRepoUri', {
+      value: this.workerRepo.repositoryUri,
+      description: 'ECR repo URI for the worker image (build-worker-image CI job pushes here)'
+    })
+    new CfnOutput(this, 'RedisHost', {
+      value: this.redisHost,
+      description: 'Primary endpoint host for ElastiCache Redis (injected as REDIS_HOST)'
+    })
+    new CfnOutput(this, 'RedisPort', {
+      value: this.redisPort,
+      description: 'Primary endpoint port for ElastiCache Redis (injected as REDIS_PORT)'
     })
   }
 }

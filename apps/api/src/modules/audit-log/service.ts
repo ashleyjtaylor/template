@@ -1,5 +1,5 @@
-import type { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db.js'
+import type { Prisma } from '@template/db'
+import { prisma } from '@template/db'
 import { getRequestId, logger } from '@/lib/logger.js'
 import type { AuditContext, AuditEvent } from '@/modules/audit-log/events.js'
 

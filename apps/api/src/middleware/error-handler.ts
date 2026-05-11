@@ -1,7 +1,7 @@
+import { formatError, HttpError } from '@template/errors'
 import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { formatError, HttpError } from '@/lib/errors.js'
 import { logger } from '@/lib/logger.js'
 
 // Maps a non-typed framework error (HTTPException from middleware like

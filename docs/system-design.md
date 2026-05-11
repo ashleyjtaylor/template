@@ -21,16 +21,20 @@ graph TB
         end
         subgraph PrivateSubnets["Private subnets"]
             ECS["ECS Fargate service — api<br/>0.25 vCPU / 0.5 GB<br/>:3000"]
+            Worker["ECS Fargate service — worker<br/>0.25 vCPU / 0.5 GB<br/>BullMQ consumer + schedules"]
             Migrator["ECS Fargate task — migrator<br/>(one-off, run on each deploy)"]
             Bootstrap["ECS Fargate task — bootstrap-staff<br/>(one-off, workflow_dispatch only)"]
             RDS[("RDS Postgres<br/>db.t4g.micro, 20 GB<br/>:5432")]
+            Redis[("ElastiCache Valkey 8<br/>cache.t4g.micro, single node<br/>:6379, AUTH + TLS")]
         end
     end
 
-    ECR["ECR repo<br/>template-staging-api"]
-    Logs["CloudWatch Logs<br/>/ecs/template-staging-api<br/>/ecs/template-staging-migrator<br/>/ecs/template-staging-bootstrap<br/>30d retention"]
+    ApiEcr["ECR repo<br/>template-staging-api"]
+    WorkerEcr["ECR repo<br/>template-staging-worker"]
+    Logs["CloudWatch Logs<br/>/ecs/template-staging-api<br/>/ecs/template-staging-worker<br/>/ecs/template-staging-migrator<br/>/ecs/template-staging-bootstrap<br/>30d retention"]
     DbSecret["Secrets Manager<br/>template-staging-db-credentials"]
     AppSecrets["Secrets Manager<br/>template-staging-app-secrets<br/>(betterAuthSecret, ...)"]
+    RedisSecret["Secrets Manager<br/>template-staging-redis-secrets<br/>(redisAuthToken)"]
 
     Internet -->|HTTP :80| ALB
     Internet -->|HTTPS :443| InternalCF
@@ -41,18 +45,27 @@ graph TB
     WebCF -->|ALB origin<br/>/api/*| ALB
     ALB -->|target group<br/>health: GET /health| ECS
     ECS -->|Postgres :5432| RDS
+    ECS -->|rediss :6379<br/>Bull Board, outbox emit| Redis
+    Worker -->|Postgres :5432| RDS
+    Worker -->|rediss :6379<br/>BullMQ consume + emit| Redis
     Migrator -->|prisma migrate deploy| RDS
     Bootstrap -->|create / promote staff user| RDS
     ECS -->|outbound via NAT| Internet
-    ECR -.->|image pull on task start| ECS
-    ECR -.->|same image, override CMD| Migrator
-    ECR -.->|same image, override CMD| Bootstrap
+    Worker -->|outbound via NAT| Internet
+    ApiEcr -.->|image pull on task start| ECS
+    ApiEcr -.->|same image, override CMD| Migrator
+    ApiEcr -.->|same image, override CMD| Bootstrap
+    WorkerEcr -.->|image pull on task start| Worker
     DbSecret -.->|injected as DB_* env vars| ECS
+    DbSecret -.->|injected as DB_* env vars| Worker
     DbSecret -.->|injected as DB_* env vars| Migrator
     DbSecret -.->|injected as DB_* env vars| Bootstrap
     AppSecrets -.->|injected as BETTER_AUTH_SECRET| ECS
     AppSecrets -.->|injected as BETTER_AUTH_SECRET| Bootstrap
+    RedisSecret -.->|injected as REDIS_AUTH_TOKEN| ECS
+    RedisSecret -.->|injected as REDIS_AUTH_TOKEN| Worker
     ECS -.->|stdout / stderr| Logs
+    Worker -.->|stdout / stderr| Logs
     Migrator -.->|stdout / stderr| Logs
     Bootstrap -.->|stdout / stderr| Logs
 ```
@@ -61,12 +74,13 @@ graph TB
 - `albSg`: inbound `:80` from `0.0.0.0/0`
 - `ecsSg`: inbound `:3000` from `albSg` only
 - `rdsSg`: inbound `:5432` from `ecsSg` only
+- `redisSg`: inbound `:6379` from `ecsSg` only
 - All other inbound denied (default)
 
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
-- `template-staging-data` — ECR repo, RDS Postgres, Secrets Manager DB credentials + app-secrets, ECS cluster, migrator + bootstrap-staff task definitions and their log groups
-- `template-staging-app` — Fargate service, API task def, ALB, target group, listener, API log group, internal + web SPA S3 buckets + CloudFront distributions (one per SPA)
+- `template-staging-data` — ECR repos (api + worker), RDS Postgres, ElastiCache Valkey 8 replication group, Secrets Manager (DB credentials + app secrets + redis secrets), ECS cluster, migrator + bootstrap-staff task definitions and their log groups
+- `template-staging-app` — Fargate services (api + worker), task defs, ALB, target group + listener for api, log groups, internal + web SPA S3 buckets + CloudFront distributions (one per SPA)
 
 All stacks have `terminationProtection: false` so `cdk destroy "template-staging-*"` tears them down without manual intervention.
 
@@ -78,17 +92,19 @@ Per-route documentation lives in [`docs/endpoints.md`](endpoints.md) — request
 
 Two workflow files own the staging deploy story:
 
-- **`.github/workflows/ci.yml`** — PR + push validation only. Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-internal-app` (PR sanity), `build-web-app` (PR sanity).
+- **`.github/workflows/ci.yml`** — PR + push validation only. Jobs: `ci`, `cdk-synth`, `commitlint` (PR), `build-api-image` (PR sanity), `build-worker-image` (PR sanity), `build-internal-app` (PR sanity), `build-web-app` (PR sanity).
 - **`.github/workflows/deploy-staging.yml`** — `workflow_dispatch`-only deploy DAG.
 
 ```mermaid
 graph LR
     Trigger[workflow_dispatch on main] --> Network[deploy-network-data]
     Network -->|cdk deploy<br/>network + data<br/>-c imageTag=sha| BuildApi[build-api-image]
+    Network --> BuildWorker[build-worker-image]
     Trigger --> BuildInternal[build-internal-app]
     Trigger --> BuildWeb[build-web-app]
-    BuildApi -->|docker build<br/>push :sha to ECR| Migrate[migrate-db]
-    Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| AppStack[deploy-app-stack]
+    BuildApi -->|docker build<br/>push :sha to api ECR| Migrate[migrate-db]
+    BuildWorker -->|docker build<br/>push :sha to worker ECR| AppStack[deploy-app-stack]
+    Migrate -->|aws ecs run-task<br/>migrator + prisma migrate deploy| AppStack
     AppStack -->|cdk deploy app| InternalSpa[deploy-internal-spa]
     AppStack --> WebSpa[deploy-web-spa]
     BuildInternal -->|vite build<br/>upload bundle artifact| InternalSpa
@@ -96,7 +112,7 @@ graph LR
     InternalSpa -->|S3 sync + CloudFront invalidate| Smoke[smoke]
     WebSpa -->|S3 sync + CloudFront invalidate| Smoke
     AppStack --> Smoke
-    Smoke -->|curl ALB /health<br/>curl each CloudFront /| Done([deployed])
+    Smoke -->|curl ALB /health<br/>curl each CloudFront /<br/>assert worker runningCount=1| Done([deployed])
 ```
 
 - The deploy DAG is `workflow_dispatch`-only (manual trigger from the Actions tab). Operator discipline: trigger only after the green check from `ci.yml` on the same SHA. There is no in-workflow gate yet — see `docs/tickets/09-ci-workflow-reorg.md` for when to add one.
@@ -122,10 +138,10 @@ Stripe / SES / Sentry / OAuth providers will get their own subsection here as th
 
 These are designed for in `project_overview.md` but absent from the live system:
 
-- **Data**: ElastiCache Redis, S3 (uploads). (Application-level Secrets Manager secret `${PRODUCT}-${env}-app-secrets` IS deployed and currently holds `betterAuthSecret`; future fields like `stripeSecretKey` add to the same JSON document.)
+- **Data**: S3 (uploads). (Application-level Secrets Manager secret `${PRODUCT}-${env}-app-secrets` IS deployed and currently holds `betterAuthSecret`; future fields like `stripeSecretKey` add to the same JSON document. ElastiCache Valkey 8 IS deployed alongside RDS — used by BullMQ for queues, schedules, and the outbox publisher.)
 - **Edge**: Route53, ACM, HTTPS on the ALB, custom domain. (CloudFront IS deployed — one distribution per SPA, each backed by an S3 origin for `/*` and the ALB origin for `/api/*`. Route53 + ACM still pending so each SPA is served from its CloudFront default `*.cloudfront.net` domain.)
-- **Apps**: `apps/worker` (BullMQ consumer), `apps/web`, `apps/portal`. (`apps/internal` IS deployed: login + audit-log list/detail behind a `staffRole` gate.)
-- **Packages**: `packages/auth` (better-auth wired inline at `apps/api/src/lib/auth.ts` until a second consumer arrives), `packages/db`, `packages/billing`, `packages/errors`, `packages/types`, `packages/schemas`, etc.
+- **Apps**: `apps/portal`. (`apps/internal`, `apps/web`, `apps/worker` IS deployed.)
+- **Packages**: `packages/auth` (better-auth wired inline at `apps/api/src/lib/auth.ts` until a second consumer arrives), `packages/billing`, `packages/types`, `packages/schemas`, etc. (`packages/db`, `packages/errors`, `packages/events` IS shipped.)
 - **Workflows**: `deploy-production.yml`, promote-by-image cross-env retag
 - **IAM**: deploy roles still hold `AdministratorAccess` — tightening deferred per `docs/runbooks/github-oidc-setup.md`
 - **Production env**: stacks compile during `cdk synth` but no workflow deploys them; sizing is identical to staging (parameterise when production actually runs)

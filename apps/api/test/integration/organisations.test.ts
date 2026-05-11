@@ -1,6 +1,6 @@
+import { prisma } from '@template/db'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@/app.js'
-import { prisma } from '@/lib/db.js'
 
 const ORIGIN = 'http://localhost:3000'
 
@@ -87,7 +87,7 @@ afterAll(async () => {
 
 describe('POST /api/orgs/sign-up', () => {
   it('should create a user, organisation, and owner membership in one transaction', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('orgsignup-happy')
 
     const res = await signUpViaOrgs(app, email, 'Acme Corp')
@@ -114,7 +114,7 @@ describe('POST /api/orgs/sign-up', () => {
   })
 
   it('should forward better-auth status when the email is already registered', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('orgsignup-dup')
 
     await signUpViaOrgs(app, email, 'First Org')
@@ -124,7 +124,7 @@ describe('POST /api/orgs/sign-up', () => {
   })
 
   it('should return 400 when the body carries unexpected fields like inviteToken', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
 
     const res = await app.request('/api/orgs/sign-up', {
       method: 'POST',
@@ -145,7 +145,7 @@ describe('POST /api/orgs/sign-up', () => {
 
 describe('POST /api/orgs', () => {
   it('should create an additional org with the caller as owner', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie, user } = await signUpAndAuth(app, 'orgs-create')
 
     const result = await createOrgFor(app, cookie, 'Side Project')
@@ -159,7 +159,7 @@ describe('POST /api/orgs', () => {
   })
 
   it('should return 401 without a session', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
 
     const res = await app.request('/api/orgs', {
       method: 'POST',
@@ -173,7 +173,7 @@ describe('POST /api/orgs', () => {
 
 describe('GET /api/orgs', () => {
   it('should list every org the caller is a member of', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie } = await signUpAndAuth(app, 'orgs-list')
 
     await createOrgFor(app, cookie, 'Org A')
@@ -194,7 +194,7 @@ describe('GET /api/orgs', () => {
 
 describe('GET /api/orgs/:orgId', () => {
   it('should return 200 for a member', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie } = await signUpAndAuth(app, 'orgs-get-member')
     const { organisation } = await createOrgFor(app, cookie, 'Visible Org')
 
@@ -208,7 +208,7 @@ describe('GET /api/orgs/:orgId', () => {
   })
 
   it('should return 404 for a non-member (no enumeration)', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'orgs-get-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Private Org')
 
@@ -224,7 +224,7 @@ describe('GET /api/orgs/:orgId', () => {
 
 describe('PATCH /api/orgs/:orgId', () => {
   it('should let an owner rename the org and write an audit row', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie, user } = await signUpAndAuth(app, 'orgs-patch-owner')
     const { organisation } = await createOrgFor(app, cookie, 'Old Name')
 
@@ -243,7 +243,7 @@ describe('PATCH /api/orgs/:orgId', () => {
   })
 
   it('should return 403 for a member without admin role', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'orgs-patch-owner-2')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Owned')
 
@@ -273,7 +273,7 @@ describe('PATCH /api/orgs/:orgId', () => {
 
 describe('GET /api/orgs/:orgId/members', () => {
   it('should list all memberships with user details', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'members-list-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Team Org')
 
@@ -304,7 +304,7 @@ describe('GET /api/orgs/:orgId/members', () => {
 
 describe('PATCH /api/orgs/:orgId/members/:userId', () => {
   it('should let an owner promote a member to admin and write an audit row', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie, user: owner } = await signUpAndAuth(app, 'role-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
     const target = await signUpAndAuth(app, 'role-target')
@@ -343,7 +343,7 @@ describe('PATCH /api/orgs/:orgId/members/:userId', () => {
   })
 
   it('should return 403 when an admin attempts to change roles', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'role-owner-2')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 
@@ -384,7 +384,7 @@ describe('PATCH /api/orgs/:orgId/members/:userId', () => {
   })
 
   it('should return 409 when the only owner is being demoted', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie, user } = await signUpAndAuth(app, 'role-last-owner')
     const { organisation } = await createOrgFor(app, cookie, 'Org')
 
@@ -402,7 +402,7 @@ describe('PATCH /api/orgs/:orgId/members/:userId', () => {
 
 describe('DELETE /api/orgs/:orgId/members/:userId', () => {
   it('should let an admin remove a member', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'remove-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 
@@ -439,7 +439,7 @@ describe('DELETE /api/orgs/:orgId/members/:userId', () => {
   })
 
   it('should return 403 when an admin attempts to remove another admin', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'remove-owner-2')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 
@@ -466,7 +466,7 @@ describe('DELETE /api/orgs/:orgId/members/:userId', () => {
   })
 
   it('should return 409 when removing the only owner', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie, user } = await signUpAndAuth(app, 'remove-last-owner')
     const { organisation } = await createOrgFor(app, cookie, 'Org')
 
@@ -481,7 +481,7 @@ describe('DELETE /api/orgs/:orgId/members/:userId', () => {
 
 describe('POST /api/orgs/:orgId/leave', () => {
   it('should let a member leave', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'leave-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 
@@ -513,7 +513,7 @@ describe('POST /api/orgs/:orgId/leave', () => {
   })
 
   it('should return 409 when the sole owner tries to leave', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie } = await signUpAndAuth(app, 'leave-last-owner')
     const { organisation } = await createOrgFor(app, cookie, 'Org')
 
@@ -528,7 +528,7 @@ describe('POST /api/orgs/:orgId/leave', () => {
 
 describe('POST /api/orgs/:orgId/transfer-ownership', () => {
   it('should atomically promote target to owner and demote caller to admin', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie, user: owner } = await signUpAndAuth(app, 'transfer-owner')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 
@@ -569,7 +569,7 @@ describe('POST /api/orgs/:orgId/transfer-ownership', () => {
   })
 
   it('should return 403 for a non-owner', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { cookie: ownerCookie } = await signUpAndAuth(app, 'transfer-owner-2')
     const { organisation } = await createOrgFor(app, ownerCookie, 'Org')
 

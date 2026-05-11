@@ -1,5 +1,5 @@
+import { prisma } from '@template/db'
 import type { Handler } from 'hono'
-import { prisma } from '@/lib/db.js'
 import { logger } from '@/lib/logger.js'
 
 const PROBE_TIMEOUT_MS = 2_000

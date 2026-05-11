@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 const healthSchema = z.object({
   status: z.string(),
   version: z.string(),
-  env: z.enum(['development', 'staging', 'production']),
+  env: z.enum(['local', 'staging', 'production']),
   uptime: z.number()
 })
 

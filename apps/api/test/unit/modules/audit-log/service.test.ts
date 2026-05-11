@@ -1,5 +1,5 @@
+import { prisma } from '@template/db'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { prisma } from '@/lib/db.js'
 import { logger, runWithContext } from '@/lib/logger.js'
 import { writeAudit } from '@/modules/audit-log/service.js'
 

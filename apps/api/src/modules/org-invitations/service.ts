@@ -1,6 +1,7 @@
-import type { Invitation, Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db.js'
-import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors.js'
+import type { Invitation, Prisma } from '@template/db'
+import { prisma } from '@template/db'
+import { ConflictError, ForbiddenError, NotFoundError } from '@template/errors'
+import { emit } from '@template/events'
 import { getRequestId } from '@/lib/logger.js'
 import { writeAudit } from '@/modules/audit-log/service.js'
 import { generateInviteToken, hashToken } from '@/modules/org-invitations/tokens.js'
@@ -38,18 +39,38 @@ export const createInvitation = async (
 
   const rawToken = generateInviteToken()
   const tokenHashValue = hashToken(rawToken)
+  const requestId = getRequestId() ?? null
 
-  const invitation = await prisma.invitation.create({
-    data: {
-      entityId: inviteEntityId(),
-      organisationId: orgId,
-      email: lower,
-      role,
-      tokenHash: tokenHashValue,
-      invitedByUserId: actor.id,
-      expiresAt: new Date(Date.now() + INVITE_TTL_MS),
-      requestId: getRequestId() ?? null
-    }
+  // Transactionally commit the invitation row + an outbox entry for the
+  // `invitation.created` event. The outbox publisher picks it up after commit
+  // and enqueues to the destination queue (the email PR's subscriber sends
+  // the invite email; today's subscriber is a logger).
+  const invitation = await prisma.$transaction(async (tx) => {
+    const inv = await tx.invitation.create({
+      data: {
+        entityId: inviteEntityId(),
+        organisationId: orgId,
+        email: lower,
+        role,
+        tokenHash: tokenHashValue,
+        invitedByUserId: actor.id,
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        requestId
+      }
+    })
+
+    await emit(
+      {
+        type: 'invitation.created',
+        invitationId: inv.entityId,
+        organisationId: orgId,
+        email: lower,
+        role
+      },
+      { tx, requestId }
+    )
+
+    return inv
   })
 
   await writeAudit({

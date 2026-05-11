@@ -26,6 +26,29 @@ export const useSession = () => {
   }
 }
 
+const invalidateSession = (qc: ReturnType<typeof useQueryClient>) =>
+  qc.invalidateQueries({ queryKey: SESSION_KEY })
+
+export interface SignInInput {
+  email: string
+  password: string
+}
+
+export const useSignIn = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: SignInInput) =>
+      api('/api/auth/sign-in/email', z.unknown(), { method: 'POST', body: input }),
+    // Returning the invalidate promise pauses the mutation lifecycle until
+    // the session query refetches — so any navigate() in the caller's
+    // mutate-level onSuccess sees a fresh `useSession()` (otherwise the
+    // AuthGate bounces back to /login because the cached session is still
+    // null from the pre-login render).
+    onSuccess: () => invalidateSession(queryClient)
+  })
+}
+
 export const useSignOut = () => {
   const queryClient = useQueryClient()
 

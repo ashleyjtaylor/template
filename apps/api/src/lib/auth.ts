@@ -1,7 +1,7 @@
+import { prisma } from '@template/db'
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { env } from '@/env.js'
-import { prisma } from '@/lib/db.js'
 import { getRequestId } from '@/lib/logger.js'
 import { writeAudit } from '@/modules/audit-log/service.js'
 

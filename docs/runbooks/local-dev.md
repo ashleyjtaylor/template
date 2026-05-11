@@ -1,19 +1,20 @@
 # Local development
 
-End-to-end setup for working on this repo locally — Postgres, env vars, the dev server, and tests.
+End-to-end setup for working on this repo locally — Postgres, Redis, env vars, the dev server, and tests.
 
 ## Prerequisites
 
 - **Node + pnpm** — managed via [Volta](https://volta.sh). The pinned versions live in `package.json`'s `engines` and `packageManager`. Once Volta is installed, `cd` into the repo and Volta auto-uses the pinned versions.
-- **Docker** — for the local Postgres container.
+- **Docker** — for the local Postgres + Redis containers.
 - A POSIX shell (zsh, bash). All commands assume you're at the repo root unless noted.
 
 ## First-time setup
 
 ```bash
 pnpm install
-docker compose up -d postgres
+docker compose up -d                       # starts both postgres and redis
 cp apps/api/.env.example apps/api/.env
+cp apps/worker/.env.example apps/worker/.env
 ```
 
 `.env` is gitignored. The example values work as-is; only swap `BETTER_AUTH_SECRET` if you want a deterministic dev secret.
@@ -21,8 +22,8 @@ cp apps/api/.env.example apps/api/.env
 Apply Prisma migrations to **both** local databases:
 
 ```bash
-pnpm --filter @template/api exec prisma migrate deploy
-DB_NAME=template_test pnpm --filter @template/api exec prisma migrate deploy
+pnpm --filter @template/db exec prisma migrate deploy
+DB_NAME=template_test pnpm --filter @template/db exec prisma migrate deploy
 ```
 
 After this, `pnpm dev` and `pnpm test` both work.
@@ -34,11 +35,13 @@ After this, `pnpm dev` and `pnpm test` both work.
 | Var | Purpose |
 |---|---|
 | `NODE_ENV=development` | Lets libraries that read `process.env.NODE_ENV` directly (e.g. better-auth's IP-resolver dev fallback) know we're not in prod |
+| `APP_ENV=local` | Which deployed environment we are — drives any conditional logic (e.g. Mailpit vs SES, MinIO vs S3) inside facade packages |
 | `BETTER_AUTH_SECRET` | Signs better-auth session cookies — any 32+ char string locally |
 | `BETTER_AUTH_URL=http://localhost:3000` | Canonical base URL better-auth uses for OAuth callbacks, email links, and CSRF/trustedOrigins fallback |
 | `CORS_ORIGINS=http://localhost:3000` | Origins allowed for both Hono CORS and better-auth's CSRF check |
+| `REDIS_URL=redis://localhost:6379` | Connection string for the local Redis container. Deployed envs use `rediss://` with `REDIS_HOST` + `REDIS_PORT` + `REDIS_AUTH_TOKEN` instead |
 
-In production the same vars come from Secrets Manager (`BETTER_AUTH_SECRET`) and CDK-injected env (`BETTER_AUTH_URL`). DB connection vars in production come from RDS's auto-generated secret.
+In production the same vars come from Secrets Manager (`BETTER_AUTH_SECRET`, `REDIS_AUTH_TOKEN`) and CDK-injected env (`BETTER_AUTH_URL`, `REDIS_HOST`, `REDIS_PORT`). DB connection vars in production come from RDS's auto-generated secret.
 
 ## Running the dev server
 
@@ -46,7 +49,7 @@ In production the same vars come from Secrets Manager (`BETTER_AUTH_SECRET`) and
 pnpm dev
 ```
 
-Spawns the API at `http://localhost:3000` with hot-reload via `tsx watch --env-file-if-exists=.env`. Hits `/health/ready` to verify the DB is reachable.
+Spawns the API at `http://localhost:3000`, the worker (no HTTP — logs to stdout), and both SPAs, all with hot-reload via `tsx watch` / `vite`. Hits `/health/ready` to verify the DB is reachable. The worker connects to Redis and starts processing the heartbeat schedule, outbox publisher, and any registered subscribers on boot.
 
 Smoke from another terminal:
 
@@ -82,6 +85,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 Without a staff user the login screen still works but every audit-log call returns 403. Create one with the bootstrap script (next section).
 
+## Bull Board
+
+Once logged in as staff, click **Queues** in the sidebar (or hit `http://localhost:3000/api/admin/queues/` directly) to see the live BullMQ state — jobs in flight, completed, failed, repeatables. Useful for confirming the worker is alive end-to-end and for retrying failed jobs without SSH. Bull Board serves its own server-side HTML, so the sidebar link opens a new tab.
+
 ## Bootstrapping a staff user locally
 
 The `staffRole` column gates `/api/audit-log/*` and any future internal route. There is no UI for self-promotion (by design) — use the bootstrap script:
@@ -99,23 +106,23 @@ Idempotent: re-running with the same email + role is a no-op; with a different r
 ## Running tests
 
 ```bash
-pnpm --filter @template/api test
+pnpm test
 ```
 
-Runs unit + integration tests against `template_test` (per `vitest.config.ts`). Each integration test uses a unique email, so no per-test DB cleanup is needed.
+Runs unit + integration tests across every workspace package (`@template/api`, `@template/events`, `@template/errors`, both SPAs). Tests use `template_test` (per each package's `vitest.config.ts`) and the local Redis on `:6379`. Each api integration test uses a unique email; `@template/events` tests clean the outbox table + drain the relevant queues between cases.
 
 ## Adding a new migration
 
-1. Edit `apps/api/prisma/schema.prisma` with the new model / column / index.
+1. Edit `packages/db/prisma/schema.prisma` with the new model / column / index.
 2. Generate the migration **against the dev database**:
    ```bash
-   pnpm --filter @template/api exec prisma migrate dev --name <kebab-slug>
+   pnpm --filter @template/db exec prisma migrate dev --name <kebab-slug>
    ```
-   Prisma writes a new directory under `apps/api/prisma/migrations/<timestamp>_<slug>/` containing `migration.sql`.
+   Prisma writes a new directory under `packages/db/prisma/migrations/<timestamp>_<slug>/` containing `migration.sql`.
 3. **Inspect the generated SQL** before committing — Prisma 7 occasionally emits no-op `AlterTable` blocks (e.g. converting `SERIAL` to explicit-sequence form) that collide with existing DB state. Strip them.
 4. Apply the same migration to the test database:
    ```bash
-   DB_NAME=template_test pnpm --filter @template/api exec prisma migrate deploy
+   DB_NAME=template_test pnpm --filter @template/db exec prisma migrate deploy
    ```
 5. Commit the new migration directory **plus** the schema change.
 6. After regenerating the client, run `pnpm typecheck --force` (Turbo can serve a stale cached pass otherwise).
@@ -158,10 +165,10 @@ The Postgres init script at `docker/postgres-init.sql` creates both on container
 
 Versions live in `docker-compose.yml`, `package.json`, the Dockerfile, and CI workflow files where Renovate / Dependabot keeps them current automatically. Narrative docs avoid version pins so they don't go stale silently.
 
-## Stopping Postgres
+## Stopping the containers
 
 ```bash
-docker compose stop postgres   # keeps the container, keeps the volume
-docker compose down            # removes the container, keeps the volume
-docker compose down -v         # removes the container AND the data
+docker compose stop            # keeps containers, keeps volumes
+docker compose down            # removes containers, keeps volumes
+docker compose down -v         # removes containers AND data (postgres + redis volumes)
 ```

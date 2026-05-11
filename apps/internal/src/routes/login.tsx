@@ -1,20 +1,14 @@
-import { useMutation } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ApiError, api } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { useSignIn } from '@/modules/session/api'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage
 })
-
-// Better-auth's signIn response includes user + session info; the SPA
-// re-fetches what it needs via the session query, so the body is unused
-// here. Schema kept loose accordingly.
-const signInResponseSchema = z.unknown()
 
 const friendlyError = (err: unknown): string => {
   if (err instanceof ApiError) {
@@ -31,19 +25,15 @@ function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
-  const signIn = useMutation({
-    mutationFn: (creds: { email: string; password: string }) =>
-      api('/api/auth/sign-in/email', signInResponseSchema, {
-        method: 'POST',
-        body: creds
-      }),
-    onSuccess: () => navigate({ to: '/audit' })
-  })
+  const signIn = useSignIn()
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
-    signIn.mutate({ email, password })
+    // The mutate-level onSuccess fires after useSignIn's invalidateSession
+    // resolves, so the cached session is fresh by the time we navigate —
+    // AuthGate then sees isAuthed: true and lets the home dashboard render.
+    signIn.mutate({ email, password }, { onSuccess: () => navigate({ to: '/' }) })
   }
 
   return (

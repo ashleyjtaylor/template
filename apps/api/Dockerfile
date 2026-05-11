@@ -15,31 +15,35 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY infra/cdk/package.json infra/cdk/
-# --ignore-scripts skips the root `prepare` (`lefthook install`, which needs a .git dir
-# that doesn't exist in the build context) and esbuild's postinstall (vitest/biome are
-# not run in the image, so no native binary needed).
+COPY packages/errors/package.json packages/errors/
+COPY packages/db/package.json packages/db/
+COPY packages/events/package.json packages/events/
+# --ignore-scripts skips lefthook + prisma generate (the latter needs schema
+# files not yet copied in this layer). We invoke prisma generate explicitly
+# in the build stage once schema files are on disk.
 RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
 
 FROM deps AS build
 COPY tsconfig.base.json ./
+COPY packages/errors ./packages/errors
+COPY packages/db ./packages/db
+COPY packages/events ./packages/events
 COPY apps/api ./apps/api
-# Generate the Prisma Client explicitly. The deps stage installs with
-# --ignore-scripts so @prisma/client's postinstall (which normally runs
-# `prisma generate`) is skipped — we have to invoke it ourselves once the
-# schema files are in place.
-RUN pnpm --filter @template/api exec prisma generate
+# Generate the Prisma Client. Workspace deps are symlinks (default pnpm
+# behaviour), so the generated client lives at packages/db/node_modules/...
+# and resolves through the symlink chain from apps/api at runtime.
+RUN pnpm --filter @template/db exec prisma generate
+# Build workspace packages then the app, in dependency order.
+RUN pnpm --filter @template/errors build
+RUN pnpm --filter @template/db build
+RUN pnpm --filter @template/events build
 RUN pnpm --filter @template/api build
-# --ignore-scripts skips the root `prepare` (`lefthook install`); we don't want
-# git hooks installed inside the container. Workspace-package injection is opted
-# into via `injectWorkspacePackages: true` in pnpm-workspace.yaml.
-RUN pnpm --filter @template/api deploy --prod --ignore-scripts /prod
-# Re-generate the Prisma Client into the deployed node_modules. `pnpm deploy`
-# creates a fresh node_modules in /prod with no .prisma artifacts, so without
-# this step the runtime would fail on import. `prisma` is in runtime deps so
-# the CLI is available in /prod/node_modules/.bin. prisma.config.ts ships
-# alongside the schema so the migrator task can `prisma migrate deploy`.
-RUN cp -r apps/api/prisma /prod/prisma && cp apps/api/prisma.config.ts /prod/prisma.config.ts
-RUN cd /prod && node_modules/.bin/prisma generate
+# Strip devDependencies in place. --frozen-lockfile + --prod keeps the
+# lockfile honest; the symlink chain to workspace packages survives.
+# `CI=true` skips pnpm's interactive prompt before purging node_modules
+# (the prod-only install replaces the dev+prod node_modules from the deps
+# stage); without it pnpm aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
+RUN CI=true pnpm install --frozen-lockfile --filter @template/api... --prod --ignore-scripts
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -48,7 +52,13 @@ ARG GIT_SHA=""
 ENV NODE_ENV=production \
     PORT=3000 \
     GIT_SHA=$GIT_SHA
-COPY --from=build --chown=node:node /prod ./
+# Copy the built, prod-only workspace from the build stage. Symlinks survive
+# the COPY (Docker preserves them). apps/api's runtime resolves @template/*
+# via apps/api/node_modules/@template/* → ../../packages/*.
+COPY --from=build --chown=node:node /repo /app
 USER node
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+# WORKDIR is /app (the workspace root). apps/api's CMD uses a workspace-
+# relative path; the migrator task overrides CMD to invoke prisma from
+# packages/db (see infra/cdk/lib/data-stack.ts).
+CMD ["node", "apps/api/dist/index.js"]

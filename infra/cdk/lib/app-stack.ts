@@ -37,9 +37,12 @@ export interface AppStackProps extends StackProps {
   albSg: SecurityGroup
   ecsSg: SecurityGroup
   apiRepo: Repository
+  workerRepo: Repository
   cluster: Cluster
   dbSecrets: Record<string, EcsSecret>
   appSecrets: Record<string, EcsSecret>
+  redisHost: string
+  redisPort: string
   imageTag: string
 }
 
@@ -47,7 +50,20 @@ export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props)
 
-    const { envName, vpc, albSg, ecsSg, apiRepo, cluster, dbSecrets, appSecrets, imageTag } = props
+    const {
+      envName,
+      vpc,
+      albSg,
+      ecsSg,
+      apiRepo,
+      workerRepo,
+      cluster,
+      dbSecrets,
+      appSecrets,
+      redisHost,
+      redisPort,
+      imageTag
+    } = props
 
     const logGroup = new LogGroup(this, 'ApiLogs', {
       logGroupName: `/ecs/${PRODUCT}-${envName}-api`,
@@ -184,6 +200,11 @@ export class AppStack extends Stack {
         // the APP_ENV comment in apps/api/src/env.ts.
         APP_ENV: envName,
         PORT: String(APP_PORT),
+        // Redis connection. The API talks to Redis for Bull Board (queue
+        // inspection at /api/admin/queues). REDIS_AUTH_TOKEN arrives via the
+        // secrets block below; `@template/events` composes the rediss:// URL.
+        REDIS_HOST: redisHost,
+        REDIS_PORT: redisPort,
         BETTER_AUTH_URL: `https://${internalDistribution.distributionDomainName}`,
         CORS_ORIGINS: [
           `https://${internalDistribution.distributionDomainName}`,
@@ -244,6 +265,54 @@ export class AppStack extends Stack {
       port: 80,
       protocol: ApplicationProtocol.HTTP,
       defaultTargetGroups: [targetGroup]
+    })
+
+    // Worker: BullMQ consumer + scheduled jobs. No HTTP server, no ALB target
+    // group, no port mapping — health is "the task is up". Same SG as the API
+    // (it's outbound only that matters for Redis + DB; the SG's inbound rules
+    // don't apply since nothing tries to connect to the worker).
+    const workerLogGroup = new LogGroup(this, 'WorkerLogs', {
+      logGroupName: `/ecs/${PRODUCT}-${envName}-worker`,
+      retention: RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.DESTROY
+    })
+
+    const workerTaskDef = new FargateTaskDefinition(this, 'WorkerTask', {
+      cpu: 256,
+      memoryLimitMiB: 512
+    })
+
+    workerTaskDef.addContainer('worker', {
+      image: ContainerImage.fromEcrRepository(workerRepo, imageTag),
+      logging: LogDrivers.awsLogs({ logGroup: workerLogGroup, streamPrefix: 'worker' }),
+      environment: {
+        NODE_ENV: 'production',
+        APP_ENV: envName,
+        REDIS_HOST: redisHost,
+        REDIS_PORT: redisPort
+      },
+      secrets: { ...dbSecrets, ...appSecrets },
+      // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
+      // in apps/worker/src/env.ts so BullMQ Workers can drain in-flight jobs
+      // before ECS force-kills the container.
+      stopTimeout: Duration.seconds(30)
+    })
+
+    const workerService = new FargateService(this, 'WorkerService', {
+      cluster,
+      taskDefinition: workerTaskDef,
+      desiredCount: 1,
+      minHealthyPercent: 0,
+      maxHealthyPercent: 200,
+      circuitBreaker: { rollback: true },
+      assignPublicIp: false,
+      securityGroups: [ecsSg],
+      vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS }
+    })
+
+    new CfnOutput(this, 'WorkerServiceName', {
+      value: workerService.serviceName,
+      description: 'ECS service name for the worker — consumed by the deploy-staging smoke step'
     })
 
     new CfnOutput(this, 'AlbDnsName', {
