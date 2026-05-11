@@ -8,7 +8,8 @@ import { errorHandler } from '@/middleware/error-handler.js'
 import { healthReady } from '@/middleware/health-ready.js'
 import { requestId } from '@/middleware/request-id.js'
 import { requestLogger } from '@/middleware/request-logger.js'
-import { queuesAdminRoutes } from '@/modules/admin/queues.js'
+import { requireStaff } from '@/middleware/require-staff.js'
+import { queuesAdminPlugin } from '@/modules/admin/queues.js'
 import { auditLogRoutes } from '@/modules/audit-log/routes.js'
 import { orgInvitationAcceptRoutes, orgInvitationRoutes } from '@/modules/org-invitations/routes.js'
 import { orgRoutes } from '@/modules/organisations/routes.js'
@@ -48,7 +49,9 @@ export function createApp({
 
   app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw))
 
-  app.route('/api/admin/queues', queuesAdminRoutes)
+  app.use('/api/admin/queues/*', requireStaff)
+  app.use('/api/admin/queues', requireStaff)
+  app.route('/api/admin/queues', queuesAdminPlugin)
   app.route('/api/audit-log', auditLogRoutes)
   app.route('/api/orgs', orgRoutes)
   app.route('/api/orgs/:orgId/invitations', orgInvitationRoutes)

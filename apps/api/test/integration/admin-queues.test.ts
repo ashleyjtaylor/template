@@ -36,7 +36,7 @@ describe('GET /api/admin/queues', () => {
   it('should return 401 with no session', async () => {
     const app = createApp({ gitSha: 'test', appEnv: 'local' })
 
-    const res = await app.request('/api/admin/queues/')
+    const res = await app.request('/api/admin/queues')
 
     expect(res.status).toBe(401)
   })
@@ -47,23 +47,41 @@ describe('GET /api/admin/queues', () => {
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
 
-    const res = await app.request('/api/admin/queues/', { headers: { Cookie: cookie } })
+    const res = await app.request('/api/admin/queues', { headers: { Cookie: cookie } })
 
     expect(res.status).toBe(403)
   })
 
-  it('should let a staff session through to Bull Board', async () => {
+  it('should serve the Bull Board dashboard to a staff session', async () => {
     const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('admin-queues-staff')
     const signupRes = await signUpAsStaff(app, email)
     const cookie = cookieFrom(signupRes)
 
-    const res = await app.request('/api/admin/queues/', { headers: { Cookie: cookie } })
+    const res = await app.request('/api/admin/queues', { headers: { Cookie: cookie } })
+    const html = await res.text()
 
-    // The point of this test is the auth gate, not Bull Board's own routing.
-    // requireStaff would throw 401 / 403 if the session didn't pass — anything
-    // else means the gate let us through to the Bull Board plugin.
-    expect(res.status).not.toBe(401)
-    expect(res.status).not.toBe(403)
+    expect(res.status).toBe(200)
+    // Bull Board's entry handler renders HTML that injects a <base href> for
+    // the dashboard root + the React mount node.
+    expect(html).toContain('<base href="/api/admin/queues/"')
+    expect(html).toContain('id="root"')
+  })
+
+  it('should serve the queues JSON API to a staff session', async () => {
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
+    const email = uniqueEmail('admin-queues-api')
+    const signupRes = await signUpAsStaff(app, email)
+    const cookie = cookieFrom(signupRes)
+
+    const res = await app.request('/api/admin/queues/api/queues', { headers: { Cookie: cookie } })
+    const body = (await res.json()) as { queues: Array<{ name: string }> }
+
+    expect(res.status).toBe(200)
+    expect(body.queues.map((q) => q.name).sort()).toEqual([
+      'internal',
+      'outbox-publisher',
+      'schedules'
+    ])
   })
 })

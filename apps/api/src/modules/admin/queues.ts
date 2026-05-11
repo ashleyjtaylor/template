@@ -3,8 +3,6 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
 import { HonoAdapter } from '@bull-board/hono'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { getQueue, QueueName } from '@template/events'
-import { Hono } from 'hono'
-import { requireStaff } from '@/middleware/require-staff.js'
 
 // Bull Board UI for the BullMQ queues this template ships with. Staff hit
 // /api/admin/queues to inspect jobs, retry failures, and drill into payloads
@@ -28,6 +26,10 @@ createBullBoard({
 
 serverAdapter.setBasePath(BASE_PATH)
 
-export const queuesAdminRoutes = new Hono()
-queuesAdminRoutes.use('*', requireStaff)
-queuesAdminRoutes.route('/', serverAdapter.registerPlugin())
+// The Bull Board plugin Hono app. Mounted in app.ts with `requireStaff`
+// applied at the outer `use()` level — wrapping it in an intermediate
+// `new Hono().route('/', plugin)` triggers a Hono nested-routing bug where
+// `/static/*` and the trailing-slash entry route don't match (the static UI
+// assets 404 out, breaking the actual dashboard). Mounting directly avoids
+// the double route() nesting and the plugin's routes resolve correctly.
+export const queuesAdminPlugin = serverAdapter.registerPlugin()
