@@ -26,10 +26,18 @@ createBullBoard({
 
 serverAdapter.setBasePath(BASE_PATH)
 
-// The Bull Board plugin Hono app. Mounted in app.ts with `requireStaff`
-// applied at the outer `use()` level — wrapping it in an intermediate
-// `new Hono().route('/', plugin)` triggers a Hono nested-routing bug where
-// `/static/*` and the trailing-slash entry route don't match (the static UI
-// assets 404 out, breaking the actual dashboard). Mounting directly avoids
-// the double route() nesting and the plugin's routes resolve correctly.
+// The Bull Board plugin's Hono app. Mounted in app.ts with `requireStaff`
+// applied at the outer `use()` level; we mount the plugin directly with
+// `app.route('/api/admin/queues', queuesAdminPlugin)` rather than wrapping it
+// in `new Hono().route('/', plugin)` — the extra layer adds no value and
+// keeps the routing chain shallow.
+//
+// **Path conventions** — Bull Board renders the dashboard at
+// `/api/admin/queues` (no trailing slash; that's the entry route Bull Board
+// registers as `/`). Static assets live under `/static/*`, the JSON API under
+// `/api/queues`, and queue / job detail pages under `/queue/...`. Bull
+// Board's HTML emits `<base href="/api/admin/queues/">` so relative URLs in
+// the bundle resolve correctly. Trailing-slash variants (e.g. someone pasting
+// `/api/admin/queues/`) get a 301 from the `trimTrailingSlash` middleware
+// registered in app.ts.
 export const queuesAdminPlugin = serverAdapter.registerPlugin()

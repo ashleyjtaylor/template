@@ -14,6 +14,14 @@ const BATCH = 100
  *
  * Called by the worker's repeatable `outbox-publisher` job (cadence
  * configured at registration time in apps/worker).
+ *
+ * **Concurrency** — the BullMQ Worker on the `outbox-publisher` queue runs at
+ * concurrency 1, so two ticks never race on the same row. No SKIP LOCKED
+ * needed at this size; revisit when the publisher needs to scale horizontally.
+ *
+ * **At-least-once delivery** — if the enqueue succeeds but the subsequent
+ * `processedAt` update fails (rare, e.g. DB hiccup), the next tick re-enqueues
+ * the same row. Handlers must therefore be idempotent on their job payload.
  */
 export async function publishOutbox(): Promise<{ published: number; failed: number }> {
   const rows = await prisma.outbox.findMany({

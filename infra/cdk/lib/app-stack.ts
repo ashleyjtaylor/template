@@ -298,7 +298,7 @@ export class AppStack extends Stack {
       stopTimeout: Duration.seconds(30)
     })
 
-    new FargateService(this, 'WorkerService', {
+    const workerService = new FargateService(this, 'WorkerService', {
       cluster,
       taskDefinition: workerTaskDef,
       desiredCount: 1,
@@ -308,6 +308,11 @@ export class AppStack extends Stack {
       assignPublicIp: false,
       securityGroups: [ecsSg],
       vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS }
+    })
+
+    new CfnOutput(this, 'WorkerServiceName', {
+      value: workerService.serviceName,
+      description: 'ECS service name for the worker — consumed by the deploy-staging smoke step'
     })
 
     new CfnOutput(this, 'AlbDnsName', {

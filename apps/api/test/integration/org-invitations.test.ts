@@ -103,6 +103,24 @@ describe('POST /api/orgs/:orgId/invitations', () => {
       where: { action: 'organisation.member.invited', resourceId: organisationId }
     })
     expect(audit?.actorUserId).toBe(owner.user.entityId)
+
+    // The transactional emit should have written an `invitation.created`
+    // outbox row in the same transaction as the invitation insert. The
+    // outbox publisher (worker) drains it asynchronously; we only assert
+    // the row exists with the right shape here.
+    const outbox = await prisma.outbox.findFirst({
+      where: { topic: 'invitation.created' },
+      orderBy: { createdAt: 'desc' }
+    })
+    expect(outbox?.entityId).toMatch(/^obx_/)
+    expect(outbox?.targetQueue).toBe('internal')
+    expect(outbox?.payload).toMatchObject({
+      type: 'invitation.created',
+      invitationId: body.invitation.entityId,
+      organisationId,
+      email: inviteeEmail,
+      role: 'member'
+    })
   })
 
   it('should let an admin invite a member', async () => {

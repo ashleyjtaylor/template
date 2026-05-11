@@ -7,7 +7,7 @@ import type { DomainEvent } from './types.js'
 export interface EmitOptions {
   // Pass a Prisma transaction client to write the event to the outbox table
   // inside the same transaction (so emit becomes atomic with the business
-  // write). The outbox drainer enqueues to the destination queue after
+  // write). The outbox publisher enqueues to the destination queue after
   // commit. Without `tx`, emit enqueues directly to Redis.
   tx?: Prisma.TransactionClient
   // Optional request correlation id stamped on the outbox row.

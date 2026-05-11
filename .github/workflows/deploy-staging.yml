@@ -543,10 +543,18 @@ jobs:
         # confirmation that the binary boots cleanly against Redis + Postgres.
         run: |
           set -eo pipefail
+          WORKER_SERVICE=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-app \
+            --query 'Stacks[0].Outputs[?OutputKey==`WorkerServiceName`].OutputValue' \
+            --output text)
+          CLUSTER=$(aws cloudformation describe-stacks \
+            --stack-name template-staging-data \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiClusterName`].OutputValue' \
+            --output text)
           for i in $(seq 1 30); do
             RUNNING=$(aws ecs describe-services \
-              --cluster template-staging \
-              --services $(aws ecs list-services --cluster template-staging --query 'serviceArns[?contains(@, `WorkerService`)]|[0]' --output text) \
+              --cluster "$CLUSTER" \
+              --services "$WORKER_SERVICE" \
               --query 'services[0].runningCount' \
               --output text)
             if [ "$RUNNING" = "1" ]; then

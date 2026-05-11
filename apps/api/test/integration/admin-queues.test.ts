@@ -68,6 +68,24 @@ describe('GET /api/admin/queues', () => {
     expect(html).toContain('id="root"')
   })
 
+  it('should 301-redirect a trailing-slash request to the canonical no-slash URL', async () => {
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
+    const email = uniqueEmail('admin-queues-trail')
+    const signupRes = await signUpAsStaff(app, email)
+    const cookie = cookieFrom(signupRes)
+
+    // Hono treats `/path` and `/path/` as distinct routes by default — without
+    // trimTrailingSlash() this would 404. The middleware redirects on 404 so
+    // operators pasting the trailing-slash variant get a smooth experience.
+    const res = await app.request('/api/admin/queues/', {
+      headers: { Cookie: cookie },
+      redirect: 'manual'
+    })
+
+    expect(res.status).toBe(301)
+    expect(res.headers.get('location')).toMatch(/\/api\/admin\/queues$/)
+  })
+
   it('should serve the queues JSON API to a staff session', async () => {
     const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('admin-queues-api')

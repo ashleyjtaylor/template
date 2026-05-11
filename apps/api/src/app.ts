@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
+import { trimTrailingSlash } from 'hono/trailing-slash'
 import { env } from '@/env.js'
 import { auth } from '@/lib/auth.js'
 import { errorHandler } from '@/middleware/error-handler.js'
@@ -35,6 +36,11 @@ export function createApp({
   app.use('*', secureHeaders())
   app.use('*', cors({ origin: corsOrigins }))
   app.use('*', bodyLimit({ maxSize: bodyLimitBytes }))
+  // Default behaviour: only redirects on 404 — normal routes are unaffected.
+  // Without this, requests with a trailing slash (e.g. `/api/admin/queues/`)
+  // 404 because Hono treats them as distinct routes from their no-slash
+  // counterparts. The redirect normalises to the canonical no-slash variant.
+  app.use('*', trimTrailingSlash())
 
   app.get('/health', (c) =>
     c.json({
