@@ -81,6 +81,16 @@ Read-only views over the `audit_log` table. Gated by the `requireStaff` middlewa
 
 Each row response includes `actorUser` (joined from `User` by `actorUserId`) and `actorImpersonator` (when set). The `details` JSON column is returned as-is — see the `database` skill for what is and isn't safe to put there.
 
+## `/api/admin/*`
+
+Staff-only operational tools, distinct from feature data routes like `/api/audit-log`. Gated by `requireStaff` — every route under this prefix returns **401** without a session, **403** if the session's `staffRole` is `null`.
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/admin/queues/*` | GET (and Bull Board's own internal POSTs for retry/clean) | Bull Board UI for the BullMQ queues this template ships with. Inspect jobs, retry failures, drill into payloads. Forks add new queues by appending to the list in `apps/api/src/modules/admin/queues.ts`. |
+
+`apps/internal` sidebar links to `/api/admin/queues/` — Bull Board renders its own server-side HTML, so the link opens in a new tab rather than navigating the SPA.
+
 ## `/api/orgs/*`
 
 Multi-tenancy primitives: organisations, the M:N memberships join carrying role, and the team-signup composite endpoint. Organisations have an `entityId` (`org_…`) but no slug yet — URLs use the entityId. Routes are gated by three middlewares from `apps/api/src/middleware/require-org-role.ts` (`requireMember`, `requireAdmin`, `requireOwner`), each of which loads the caller's `Membership` and stashes it on context. All mutations write to `audit_log`.
