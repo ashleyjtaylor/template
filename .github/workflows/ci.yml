@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       # Postgres for integration tests. The DB name + creds match the defaults
-      # in apps/api/src/env.ts so test code only needs to override DB_NAME.
+      # in packages/db/src/env.ts so test code only needs to override DB_NAME.
       postgres:
         image: postgres:18-alpine
         env:
@@ -33,12 +33,25 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Redis for BullMQ integration tests. No AUTH + no TLS — matches
+      # docker-compose.yml. Deployed envs use ElastiCache with both enabled
+      # (see infra/cdk/lib/data-stack.ts).
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DB_HOST: localhost
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: template_test
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -54,7 +67,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Apply migrations to the test database
-        run: pnpm --filter @template/api exec prisma migrate deploy
+        run: pnpm --filter @template/db exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/template_test
 
@@ -124,6 +137,23 @@ jobs:
             --build-arg GIT_SHA=pr-${{ github.event.pull_request.number }} \
             -f apps/api/Dockerfile \
             -t template-api:pr \
+            .
+
+  build-worker-image:
+    # PR-only sanity build of the apps/worker Docker image — sibling to
+    # build-api-image. promote-by-image with two images means both must build
+    # green on every PR, so catching breakage here saves a failed deploy.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Build worker image
+        run: |
+          docker build \
+            --build-arg GIT_SHA=pr-${{ github.event.pull_request.number }} \
+            -f apps/worker/Dockerfile \
+            -t template-worker:pr \
             .
 
   build-internal-app:

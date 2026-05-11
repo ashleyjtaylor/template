@@ -98,6 +98,47 @@ jobs:
             .
           docker push ${{ steps.tag.outputs.image-uri }}
 
+  build-worker-image:
+    # Builds the apps/worker Docker image and pushes to ECR with the same SHA
+    # tag as build-api-image. Both images are deployed together by
+    # deploy-app-stack (CDK references both ECR repos with the same imageTag
+    # context). Promote-by-image with two images: both re-tag together at
+    # promotion time so production runs binaries that passed staging together.
+    if: github.ref == 'refs/heads/main'
+    needs: [deploy-network-data]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2.1.5
+
+      - id: tag
+        # Repo name must match `repositoryName` for workerRepo in
+        # infra/cdk/lib/data-stack.ts.
+        run: |
+          TAG=${{ github.sha }}
+          URI=${{ steps.ecr.outputs.registry }}/template-staging-worker:$TAG
+          echo "image-uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        run: |
+          docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -f apps/worker/Dockerfile \
+            -t ${{ steps.tag.outputs.image-uri }} \
+            .
+          docker push ${{ steps.tag.outputs.image-uri }}
+
   build-internal-app:
     # Builds the apps/internal SPA bundle in parallel with build-image. The
     # artifact is consumed by deploy-internal-spa, which syncs it to the S3
@@ -237,7 +278,7 @@ jobs:
 
   deploy-app-stack:
     if: github.ref == 'refs/heads/main'
-    needs: [migrate-db]
+    needs: [migrate-db, build-worker-image]
     runs-on: ubuntu-latest
     environment: staging
     permissions:
@@ -493,4 +534,29 @@ jobs:
                 exit 1
               fi
             done
+          done
+
+      - name: Assert worker service has reached steady state
+        # ECS reports the running count once the rolling update finishes. With
+        # desiredCount: 1 and the CDK circuitBreaker, a stuck worker would
+        # have already failed deploy-app-stack — this is the final
+        # confirmation that the binary boots cleanly against Redis + Postgres.
+        run: |
+          set -eo pipefail
+          for i in $(seq 1 30); do
+            RUNNING=$(aws ecs describe-services \
+              --cluster template-staging \
+              --services $(aws ecs list-services --cluster template-staging --query 'serviceArns[?contains(@, `WorkerService`)]|[0]' --output text) \
+              --query 'services[0].runningCount' \
+              --output text)
+            if [ "$RUNNING" = "1" ]; then
+              echo "Worker service has 1 running task"
+              break
+            fi
+            echo "attempt $i: worker runningCount=$RUNNING (expected 1)"
+            sleep 10
+            if [ "$i" = "30" ]; then
+              echo "Worker smoke test failed after 30 attempts (5 minutes)"
+              exit 1
+            fi
           done
