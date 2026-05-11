@@ -64,14 +64,7 @@ jobs:
           node-version: 24.15.0
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-
-      # --ignore-scripts above skips @template/db's prisma generate postinstall
-      # (it has to be skipped — running it during install triggers an ENOENT
-      # against `.bin/prisma` from pnpm's workspace injection. invoke it
-      # explicitly here so typecheck + test can resolve `PrismaClient`.
-      - name: Generate Prisma Client
-        run: pnpm --filter @template/db exec prisma generate
+      - run: pnpm install --frozen-lockfile
 
       - name: Apply migrations to the test database
         run: pnpm --filter @template/db exec prisma migrate deploy
@@ -101,7 +94,7 @@ jobs:
           node-version: 24.15.0
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm install --frozen-lockfile
 
       - name: CDK synth
         run: pnpm --filter @template/cdk synth
@@ -123,7 +116,7 @@ jobs:
           node-version: 24.15.0
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm install --frozen-lockfile
 
       - name: Lint commits
         run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
@@ -183,7 +176,7 @@ jobs:
           node-version: 24.15.0
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm install --frozen-lockfile
 
       - name: Build internal app
         run: pnpm --filter @template/internal build
@@ -206,7 +199,7 @@ jobs:
           node-version: 24.15.0
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm install --frozen-lockfile
 
       - name: Build web app
         run: pnpm --filter @template/web build

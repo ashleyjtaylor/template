@@ -15,9 +15,8 @@ COPY infra/cdk/package.json infra/cdk/
 COPY packages/errors/package.json packages/errors/
 COPY packages/db/package.json packages/db/
 COPY packages/events/package.json packages/events/
-# --ignore-scripts skips the root `prepare` (`lefthook install`, which needs a .git dir
-# that doesn't exist in the build context), @prisma/client's postinstall (we run
-# `prisma generate` explicitly below), and esbuild's postinstall.
+# --ignore-scripts skips lefthook + prisma generate (the latter needs schema
+# files not yet copied in this layer).
 RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
 
 FROM deps AS build
@@ -26,24 +25,13 @@ COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
 COPY packages/events ./packages/events
 COPY apps/worker ./apps/worker
-# Re-install now that source files are on disk. See apps/api/Dockerfile for
-# the full reasoning — deps stage's injections lack src/ until this step.
-RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
-# Generate Prisma Client (postinstall is skipped via --ignore-scripts).
 RUN pnpm --filter @template/db exec prisma generate
-# Build workspace packages in dependency order.
 RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
-# Re-install so the built dist/ propagates into injections before deploy.
-RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
 RUN pnpm --filter @template/worker build
-RUN pnpm --filter @template/worker deploy --prod --ignore-scripts /prod
-# Re-generate Prisma into /prod. prisma is a runtime dep of @template/db, so
-# the CLI lives at /prod/node_modules/@template/db/node_modules/.bin/prisma;
-# running from @template/db's directory resolves prisma.config.ts + prisma/
-# relative to CWD. See apps/api/Dockerfile for the full reasoning.
-RUN cd /prod/node_modules/@template/db && node_modules/.bin/prisma generate
+# Strip devDependencies in place; workspace symlinks survive.
+RUN pnpm install --frozen-lockfile --filter @template/worker... --prod --ignore-scripts
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -51,8 +39,8 @@ WORKDIR /app
 ARG GIT_SHA=""
 ENV NODE_ENV=production \
     GIT_SHA=$GIT_SHA
-COPY --from=build --chown=node:node /prod ./
+COPY --from=build --chown=node:node /repo /app
 USER node
-# No EXPOSE — worker has no HTTP server. ECS health is determined by the task
-# being up (no port mapping, no ALB target group).
-CMD ["node", "dist/index.js"]
+# No EXPOSE — worker has no HTTP server. ECS health is the task being up.
+# WORKDIR is /app (the workspace root); the CMD path is workspace-relative.
+CMD ["node", "apps/worker/dist/index.js"]
