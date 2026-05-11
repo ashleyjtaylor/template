@@ -1,4 +1,4 @@
-import type { AuditLog } from '@prisma/client'
+import type { AuditLog } from '@template/db'
 import { NotFoundError } from '@template/errors'
 import { decodeCursor, encodeCursor, type ListQuery } from '@/modules/audit-log/schemas.js'
 import {

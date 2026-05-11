@@ -1,6 +1,6 @@
+import { prisma } from '@template/db'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@/app.js'
-import { prisma } from '@/lib/db.js'
 
 const ORIGIN = 'http://localhost:3000'
 

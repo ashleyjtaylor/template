@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util'
+import { prisma } from '@template/db'
 import { auth } from '@/lib/auth.js'
-import { prisma } from '@/lib/db.js'
 import { logger } from '@/lib/logger.js'
 import { isStaffRole, STAFF_ROLES, type StaffRole } from '@/middleware/require-staff.js'
 

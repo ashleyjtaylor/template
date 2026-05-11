@@ -1,6 +1,6 @@
+import { prisma } from '@template/db'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@/app.js'
-import { prisma } from '@/lib/db.js'
 
 afterEach(() => {
   vi.restoreAllMocks()

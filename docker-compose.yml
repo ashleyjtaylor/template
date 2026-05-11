@@ -19,5 +19,21 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:8-alpine
+    container_name: template-redis
+    # No password locally. Production ElastiCache uses AUTH token + TLS
+    # (rediss://) injected via Secrets Manager — see infra/cdk/lib/data-stack.ts.
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
+  redis-data:

@@ -1,4 +1,4 @@
-import type { Membership } from '@prisma/client'
+import type { Membership } from '@template/db'
 import { ForbiddenError, NotFoundError } from '@template/errors'
 import { createMiddleware } from 'hono/factory'
 import { type AuthSession, getAuthSession } from '@/middleware/require-session.js'

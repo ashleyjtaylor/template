@@ -1,4 +1,4 @@
-import type { Membership, Organisation } from '@prisma/client'
+import type { Membership, Organisation } from '@template/db'
 import { NotFoundError } from '@template/errors'
 import { auth } from '@/lib/auth.js'
 import type { AuthSession } from '@/middleware/require-session.js'

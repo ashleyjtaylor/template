@@ -1,6 +1,6 @@
+import { prisma } from '@template/db'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createApp } from '@/app.js'
-import { prisma } from '@/lib/db.js'
 
 // Integration test: connects to a real Postgres (local Docker Compose or the
 // postgres service container in CI) with the Prisma migration applied. Asserts

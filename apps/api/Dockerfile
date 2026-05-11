@@ -16,29 +16,32 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY infra/cdk/package.json infra/cdk/
 COPY packages/errors/package.json packages/errors/
+COPY packages/db/package.json packages/db/
 # --ignore-scripts skips the root `prepare` (`lefthook install`, which needs a .git dir
-# that doesn't exist in the build context) and esbuild's postinstall (vitest/biome are
-# not run in the image, so no native binary needed).
+# that doesn't exist in the build context), @prisma/client's postinstall (we run
+# `prisma generate` explicitly below), and esbuild's postinstall.
 RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
 
 FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/errors ./packages/errors
+COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 # Workspace packages must be built before apps/api can resolve their `import`
 # exports condition at runtime (typecheck reads `types` → src directly, but
 # Node + tsx need the compiled `dist/index.js`).
 RUN pnpm --filter @template/errors build
+RUN pnpm --filter @template/db build
+# Generate the Prisma Client in packages/db. The deps stage installs with
+# --ignore-scripts so @prisma/client's postinstall (which normally runs
+# `prisma generate`) is skipped — we have to invoke it ourselves once the
+# schema files are in place.
+RUN pnpm --filter @template/db exec prisma generate
 # Re-inject the now-built workspace packages into apps/api's node_modules so
 # `pnpm deploy --prod` later copies a complete dist/ for each one. Without
 # this, the initial install in the deps stage hard-linked an empty packages/
 # tree (no dist existed yet).
 RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
-# Generate the Prisma Client explicitly. The deps stage installs with
-# --ignore-scripts so @prisma/client's postinstall (which normally runs
-# `prisma generate`) is skipped — we have to invoke it ourselves once the
-# schema files are in place.
-RUN pnpm --filter @template/api exec prisma generate
 RUN pnpm --filter @template/api build
 # --ignore-scripts skips the root `prepare` (`lefthook install`); we don't want
 # git hooks installed inside the container. Workspace-package injection is opted
@@ -46,10 +49,11 @@ RUN pnpm --filter @template/api build
 RUN pnpm --filter @template/api deploy --prod --ignore-scripts /prod
 # Re-generate the Prisma Client into the deployed node_modules. `pnpm deploy`
 # creates a fresh node_modules in /prod with no .prisma artifacts, so without
-# this step the runtime would fail on import. `prisma` is in runtime deps so
-# the CLI is available in /prod/node_modules/.bin. prisma.config.ts ships
-# alongside the schema so the migrator task can `prisma migrate deploy`.
-RUN cp -r apps/api/prisma /prod/prisma && cp apps/api/prisma.config.ts /prod/prisma.config.ts
+# this step the runtime would fail on import. `prisma` is in @template/db's
+# runtime deps so the CLI is available in /prod/node_modules/.bin.
+# prisma.config.ts + schema ship alongside so the migrator task can run
+# `prisma migrate deploy` from /prod.
+RUN cp -r packages/db/prisma /prod/prisma && cp packages/db/prisma.config.ts /prod/prisma.config.ts
 RUN cd /prod && node_modules/.bin/prisma generate
 
 FROM node:24.15.0-bookworm-slim AS runner
