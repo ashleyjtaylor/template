@@ -82,7 +82,7 @@ afterAll(async () => {
 
 describe('POST /api/orgs/:orgId/invitations', () => {
   it('should let an owner create an invitation and return a one-time link', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-create-happy')
 
     const inviteeEmail = uniqueEmail('invitee')
@@ -106,7 +106,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
   })
 
   it('should let an admin invite a member', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-admin-member')
 
     const adminSignup = await signUpAndAuth(app, 'invite-admin')
@@ -132,7 +132,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
   })
 
   it('should return 403 when an admin tries to invite an admin', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { organisationId } = await createOrgWithOwner(app, 'invite-admin-admin')
 
     const adminSignup = await signUpAndAuth(app, 'invite-admin-2')
@@ -157,7 +157,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
   })
 
   it('should return 409 when an outstanding invitation already exists for that email', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-dup')
 
     const email = uniqueEmail('dup')
@@ -172,7 +172,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
   })
 
   it('should return 403 when a member tries to invite anyone', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { organisationId } = await createOrgWithOwner(app, 'invite-member-forbidden')
 
     const memberSignup = await signUpAndAuth(app, 'invite-member')
@@ -199,7 +199,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
 
 describe('GET /api/orgs/:orgId/invitations', () => {
   it('should default to pending only and never expose tokens', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-list-default')
 
     await inviteAs(app, owner.cookie, organisationId, uniqueEmail('p1'), 'member')
@@ -224,7 +224,7 @@ describe('GET /api/orgs/:orgId/invitations', () => {
   })
 
   it('should include accepted/revoked/expired rows when status=all', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-list-all')
 
     const create = await inviteAs(
@@ -256,7 +256,7 @@ describe('GET /api/orgs/:orgId/invitations', () => {
 
 describe('DELETE /api/orgs/:orgId/invitations/:invitationId', () => {
   it('should revoke a pending invite and write an audit row', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-revoke')
 
     const create = await inviteAs(
@@ -288,7 +288,7 @@ describe('DELETE /api/orgs/:orgId/invitations/:invitationId', () => {
 
 describe('GET /api/invitations/:token', () => {
   it('should return a public preview without revealing the token', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'invite-preview')
 
     const create = await inviteAs(
@@ -317,7 +317,7 @@ describe('GET /api/invitations/:token', () => {
   })
 
   it('should return 404 for an unknown token', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
 
     const res = await app.request('/api/invitations/not-a-real-token')
 
@@ -330,7 +330,7 @@ describe('POST /api/invitations/:token/accept', () => {
     new URL(body.link, ORIGIN).searchParams.get('token') ?? ''
 
   it('should create a membership for a matching invitee and write an audit row', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-happy')
 
     const inviteeEmail = uniqueEmail('happy-invitee')
@@ -361,7 +361,7 @@ describe('POST /api/invitations/:token/accept', () => {
   })
 
   it('should return 403 when the invitee email does not match the session', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-mismatch')
 
     const create = await inviteAs(
@@ -386,7 +386,7 @@ describe('POST /api/invitations/:token/accept', () => {
   })
 
   it('should consume the invite without creating a duplicate membership when already a member', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-already')
 
     const inviteeEmail = uniqueEmail('already')
@@ -425,7 +425,7 @@ describe('POST /api/invitations/:token/accept', () => {
   })
 
   it('should return 409 for an expired invite', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-expired')
 
     const inviteeEmail = uniqueEmail('expired-invitee')
@@ -451,7 +451,7 @@ describe('POST /api/invitations/:token/accept', () => {
   })
 
   it('should return 409 for a revoked invite', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-revoked')
 
     const inviteeEmail = uniqueEmail('revoked-invitee')
@@ -477,7 +477,7 @@ describe('POST /api/invitations/:token/accept', () => {
   })
 
   it('should return 401 without a session', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const { owner, organisationId } = await createOrgWithOwner(app, 'accept-unauth')
 
     const create = await inviteAs(

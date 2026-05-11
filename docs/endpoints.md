@@ -25,7 +25,7 @@ sequenceDiagram
     ALB-->>Client: 200 { status, version, env, uptime }
 ```
 
-`version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `env` is `'development' | 'staging' | 'production'` — the deployed AWS environment, sourced from the `APP_ENV` env var that CDK injects (distinct from `NODE_ENV`, which is `'production'` on both staging and prod). `uptime` is process uptime in whole seconds. The SPA reads `env` + `version` to render the env+SHA badge in the sidebar so staff can see at a glance which deployed binary they are talking to. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
+`version` is the git SHA the running container was built from, injected via `GIT_SHA` build arg → container env var. `env` is `'local' | 'staging' | 'production'` — the deployed AWS environment, sourced from the `APP_ENV` env var that CDK injects (distinct from `NODE_ENV`, which is `'production'` on both staging and prod). `uptime` is process uptime in whole seconds. The SPA reads `env` + `version` to render the env+SHA badge in the sidebar so staff can see at a glance which deployed binary they are talking to. There is no DNS, TLS, or domain yet — clients reach the ALB at its raw AWS DNS name on port 80.
 
 ## `/health/ready`
 

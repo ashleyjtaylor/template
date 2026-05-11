@@ -14,7 +14,7 @@ import { orgRoutes } from '@/modules/organisations/routes.js'
 
 export interface AppOptions {
   gitSha: string
-  appEnv: 'development' | 'staging' | 'production'
+  appEnv: 'local' | 'staging' | 'production'
   corsOrigins?: string[]
   bodyLimitBytes?: number
 }

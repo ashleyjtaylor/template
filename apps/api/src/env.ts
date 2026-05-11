@@ -17,12 +17,13 @@ const schema = z
     // from NODE_ENV: staging and production both run with NODE_ENV=production
     // (we want every prod optimisation on staging too), so NODE_ENV cannot
     // tell them apart. APP_ENV is what the SPA's env+SHA badge surfaces and
-    // what future env-conditional logic (e.g. Stripe test vs live keys)
-    // should branch on. CDK injects 'staging' / 'production' on the API
-    // container env in app-stack.ts; local dev defaults to 'development'.
+    // what future env-conditional logic (e.g. Stripe test vs live keys,
+    // Mailpit vs SES, MinIO vs S3) should branch on. CDK injects
+    // 'staging' / 'production' on the API container env in app-stack.ts;
+    // local dev defaults to 'local'.
     APP_ENV: z
-      .preprocess((v) => v || undefined, z.enum(['development', 'staging', 'production']))
-      .default('development'),
+      .preprocess((v) => v || undefined, z.enum(['local', 'staging', 'production']))
+      .default('local'),
     LOG_LEVEL: z
       .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])
       .default('info'),

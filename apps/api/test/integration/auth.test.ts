@@ -37,7 +37,7 @@ afterAll(async () => {
 
 describe('POST /api/auth/sign-up/email', () => {
   it('should create a user with a usr_-prefixed entityId and set a session cookie', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signup-happy')
 
     const res = await signUp(app, email)
@@ -78,7 +78,7 @@ describe('POST /api/auth/sign-up/email', () => {
   })
 
   it('should return 422 when the email is already registered', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signup-dup')
 
     const first = await signUp(app, email)
@@ -89,7 +89,7 @@ describe('POST /api/auth/sign-up/email', () => {
   })
 
   it('should return 400 when the password is shorter than 8 chars', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signup-weak')
 
     const res = await signUp(app, email, 'short')
@@ -100,7 +100,7 @@ describe('POST /api/auth/sign-up/email', () => {
 
 describe('POST /api/auth/sign-in/email', () => {
   it('should sign in an existing user and set a session cookie', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signin-happy')
     await signUp(app, email)
 
@@ -125,7 +125,7 @@ describe('POST /api/auth/sign-in/email', () => {
   })
 
   it('should return 401 on wrong password', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signin-wrong')
     await signUp(app, email)
 
@@ -141,7 +141,7 @@ describe('POST /api/auth/sign-in/email', () => {
 
 describe('GET /api/auth/get-session', () => {
   it('should return the user and session when called with a valid cookie', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('session-cookie')
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
@@ -155,7 +155,7 @@ describe('GET /api/auth/get-session', () => {
   })
 
   it('should return null when called without a cookie', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
 
     const res = await app.request('/api/auth/get-session')
 
@@ -166,7 +166,7 @@ describe('GET /api/auth/get-session', () => {
 
 describe('POST /api/auth/sign-out', () => {
   it('should delete the session and cause subsequent get-session to return null', async () => {
-    const app = createApp({ gitSha: 'test', appEnv: 'development' })
+    const app = createApp({ gitSha: 'test', appEnv: 'local' })
     const email = uniqueEmail('signout')
     const signupRes = await signUp(app, email)
     const cookie = cookieFrom(signupRes)
