@@ -30,8 +30,9 @@ RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
 RUN pnpm --filter @template/worker build
-# Strip devDependencies in place; workspace symlinks survive.
-RUN pnpm install --frozen-lockfile --filter @template/worker... --prod --ignore-scripts
+# Strip devDependencies in place; workspace symlinks survive. CI=true skips
+# pnpm's interactive purge prompt — see apps/api/Dockerfile for details.
+RUN CI=true pnpm install --frozen-lockfile --filter @template/worker... --prod --ignore-scripts
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*

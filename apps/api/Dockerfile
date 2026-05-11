@@ -40,7 +40,10 @@ RUN pnpm --filter @template/events build
 RUN pnpm --filter @template/api build
 # Strip devDependencies in place. --frozen-lockfile + --prod keeps the
 # lockfile honest; the symlink chain to workspace packages survives.
-RUN pnpm install --frozen-lockfile --filter @template/api... --prod --ignore-scripts
+# `CI=true` skips pnpm's interactive prompt before purging node_modules
+# (the prod-only install replaces the dev+prod node_modules from the deps
+# stage); without it pnpm aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
+RUN CI=true pnpm install --frozen-lockfile --filter @template/api... --prod --ignore-scripts
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
