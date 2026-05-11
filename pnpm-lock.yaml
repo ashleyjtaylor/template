@@ -60,6 +60,9 @@ importers:
       pino:
         specifier: 10.3.1
         version: 10.3.1
+      prisma:
+        specifier: 7.8.0
+        version: 7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -233,13 +236,13 @@ importers:
     dependencies:
       '@template/db':
         specifier: workspace:*
-        version: file:packages/db(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
+        version: link:../../packages/db
       '@template/errors':
         specifier: workspace:*
         version: link:../../packages/errors
       '@template/events':
         specifier: workspace:*
-        version: link:../../packages/events
+        version: file:packages/events(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
       bullmq:
         specifier: 5.76.7
         version: 5.76.7
@@ -249,6 +252,9 @@ importers:
       pino:
         specifier: 10.3.1
         version: 10.3.1
+      prisma:
+        specifier: 7.8.0
+        version: 7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
       zod:
         specifier: 4.4.3
         version: 4.4.3
