@@ -1,6 +1,6 @@
+import { ForbiddenError, UnauthorizedError } from '@template/errors'
 import { createMiddleware } from 'hono/factory'
 import { auth } from '@/lib/auth.js'
-import { ForbiddenError, UnauthorizedError } from '@/lib/errors.js'
 
 // `staffRole` is `string | null` from better-auth's `additionalFields` (it
 // only supports plain `string` types, not unions). The narrowing to

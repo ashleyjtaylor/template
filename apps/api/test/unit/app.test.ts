@@ -1,6 +1,6 @@
+import { NotFoundError } from '@template/errors'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@/app.js'
-import { NotFoundError } from '@/lib/errors.js'
 import { logger } from '@/lib/logger.js'
 
 afterEach(() => {

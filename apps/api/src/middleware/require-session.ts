@@ -1,6 +1,6 @@
+import { UnauthorizedError } from '@template/errors'
 import { createMiddleware } from 'hono/factory'
 import { auth } from '@/lib/auth.js'
-import { UnauthorizedError } from '@/lib/errors.js'
 
 // `userId` is better-auth's internal `user.id` (used as FK on Membership /
 // Invitation etc); `userEntityId` is the public `usr_<uuid>` for audit logs

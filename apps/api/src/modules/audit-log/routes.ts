@@ -1,6 +1,6 @@
+import { ValidationError } from '@template/errors'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { ValidationError } from '@/lib/errors.js'
 import { requireStaff } from '@/middleware/require-staff.js'
 import {
   getAuditLogController,

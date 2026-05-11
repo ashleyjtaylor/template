@@ -1,6 +1,6 @@
 import type { Membership, Organisation, Prisma } from '@prisma/client'
+import { ConflictError, ForbiddenError, NotFoundError } from '@template/errors'
 import { prisma } from '@/lib/db.js'
-import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors.js'
 import { getRequestId } from '@/lib/logger.js'
 import { writeAudit } from '@/modules/audit-log/service.js'
 import type { Role } from '@/modules/organisations/schemas.js'

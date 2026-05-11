@@ -1,6 +1,6 @@
 import type { Membership, Organisation } from '@prisma/client'
+import { NotFoundError } from '@template/errors'
 import { auth } from '@/lib/auth.js'
-import { NotFoundError } from '@/lib/errors.js'
 import type { AuthSession } from '@/middleware/require-session.js'
 import type {
   ChangeRoleInput,

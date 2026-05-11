@@ -1,5 +1,5 @@
+import { ValidationError } from '@template/errors'
 import { z } from 'zod'
-import { ValidationError } from '@/lib/errors.js'
 
 export const listQuerySchema = z.object({
   action: z.string().optional(),

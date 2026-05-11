@@ -15,6 +15,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY infra/cdk/package.json infra/cdk/
+COPY packages/errors/package.json packages/errors/
 # --ignore-scripts skips the root `prepare` (`lefthook install`, which needs a .git dir
 # that doesn't exist in the build context) and esbuild's postinstall (vitest/biome are
 # not run in the image, so no native binary needed).
@@ -22,7 +23,17 @@ RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
 
 FROM deps AS build
 COPY tsconfig.base.json ./
+COPY packages/errors ./packages/errors
 COPY apps/api ./apps/api
+# Workspace packages must be built before apps/api can resolve their `import`
+# exports condition at runtime (typecheck reads `types` → src directly, but
+# Node + tsx need the compiled `dist/index.js`).
+RUN pnpm --filter @template/errors build
+# Re-inject the now-built workspace packages into apps/api's node_modules so
+# `pnpm deploy --prod` later copies a complete dist/ for each one. Without
+# this, the initial install in the deps stage hard-linked an empty packages/
+# tree (no dist existed yet).
+RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
 # Generate the Prisma Client explicitly. The deps stage installs with
 # --ignore-scripts so @prisma/client's postinstall (which normally runs
 # `prisma generate`) is skipped — we have to invoke it ourselves once the

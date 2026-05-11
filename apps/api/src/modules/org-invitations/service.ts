@@ -1,6 +1,6 @@
 import type { Invitation, Prisma } from '@prisma/client'
+import { ConflictError, ForbiddenError, NotFoundError } from '@template/errors'
 import { prisma } from '@/lib/db.js'
-import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors.js'
 import { getRequestId } from '@/lib/logger.js'
 import { writeAudit } from '@/modules/audit-log/service.js'
 import { generateInviteToken, hashToken } from '@/modules/org-invitations/tokens.js'
