@@ -251,11 +251,20 @@ export class DataStack extends Stack {
       // exits. CI's `aws ecs run-task` invocation doesn't override; this is
       // the canonical command.
       //
-      // Don't prefix with `node` — `.bin/prisma` is a /bin/sh wrapper, not
-      // JS, so `node node_modules/.bin/prisma` errors with "SyntaxError:
-      // missing ) after argument list" on the wrapper's shell syntax. The
-      // wrapper's shebang invokes node on the real JS entry on its own.
-      command: ['node_modules/.bin/prisma', 'migrate', 'deploy', '--schema=./prisma/schema.prisma']
+      // prisma is a runtime dep of @template/db (not apps/api), so the CLI
+      // lives at /app/node_modules/@template/db/node_modules/.bin/prisma after
+      // `pnpm deploy`. Run it via sh -c with a `cd` so prisma.config.ts +
+      // prisma/schema.prisma resolve relative to @template/db's directory.
+      //
+      // Don't prefix with `node` — `.bin/prisma` is a /bin/sh wrapper, not JS,
+      // so `node node_modules/.bin/prisma` errors with "SyntaxError: missing
+      // ) after argument list" on the wrapper's shell syntax. The wrapper's
+      // shebang invokes node on the real JS entry on its own.
+      command: [
+        'sh',
+        '-c',
+        'cd node_modules/@template/db && node_modules/.bin/prisma migrate deploy'
+      ]
     })
 
     // CFN outputs consumed by the migrate-db CI step.

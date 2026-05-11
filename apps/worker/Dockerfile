@@ -39,10 +39,11 @@ RUN pnpm --filter @template/events build
 RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
 RUN pnpm --filter @template/worker build
 RUN pnpm --filter @template/worker deploy --prod --ignore-scripts /prod
-# Re-generate Prisma into /prod since `pnpm deploy` creates a fresh
-# node_modules with no .prisma artifacts.
-RUN cp -r packages/db/prisma /prod/prisma && cp packages/db/prisma.config.ts /prod/prisma.config.ts
-RUN cd /prod && node_modules/.bin/prisma generate
+# Re-generate Prisma into /prod. prisma is a runtime dep of @template/db, so
+# the CLI lives at /prod/node_modules/@template/db/node_modules/.bin/prisma;
+# running from @template/db's directory resolves prisma.config.ts + prisma/
+# relative to CWD. See apps/api/Dockerfile for the full reasoning.
+RUN cd /prod/node_modules/@template/db && node_modules/.bin/prisma generate
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*

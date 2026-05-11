@@ -55,12 +55,12 @@ RUN pnpm --filter @template/api build
 RUN pnpm --filter @template/api deploy --prod --ignore-scripts /prod
 # Re-generate the Prisma Client into the deployed node_modules. `pnpm deploy`
 # creates a fresh node_modules in /prod with no .prisma artifacts, so without
-# this step the runtime would fail on import. `prisma` is in @template/db's
-# runtime deps so the CLI is available in /prod/node_modules/.bin.
-# prisma.config.ts + schema ship alongside so the migrator task can run
-# `prisma migrate deploy` from /prod.
-RUN cp -r packages/db/prisma /prod/prisma && cp packages/db/prisma.config.ts /prod/prisma.config.ts
-RUN cd /prod && node_modules/.bin/prisma generate
+# this step the runtime would fail on import. prisma is a runtime dep of
+# @template/db, so the CLI lands at /prod/node_modules/@template/db/node_modules/.bin/prisma
+# (no top-level .bin link because prisma is not a direct dep of apps/api).
+# Run from @template/db's directory so prisma.config.ts + prisma/ resolve
+# relative to CWD without copying them to /prod root.
+RUN cd /prod/node_modules/@template/db && node_modules/.bin/prisma generate
 
 FROM node:24.15.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
