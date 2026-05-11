@@ -29,11 +29,13 @@ COPY apps/worker ./apps/worker
 # Workspace packages must be built before apps/worker can resolve their
 # `import` exports condition at runtime.
 RUN pnpm --filter @template/errors build
+# Generate the Prisma Client FIRST — packages/db's tsc imports `PrismaClient`
+# from `@prisma/client`, which only exists after `prisma generate` runs. The
+# deps stage installs with --ignore-scripts so the postinstall is skipped;
+# we invoke it explicitly here before building @template/db.
+RUN pnpm --filter @template/db exec prisma generate
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
-# Generate the Prisma Client so @template/db's runtime works for the worker
-# (queues, outbox drainer, schedules all touch the DB).
-RUN pnpm --filter @template/db exec prisma generate
 # Re-inject the now-built workspace packages into apps/worker's node_modules
 # so `pnpm deploy --prod` later copies a complete dist/ for each one.
 RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts

@@ -33,13 +33,14 @@ COPY apps/api ./apps/api
 # exports condition at runtime (typecheck reads `types` → src directly, but
 # Node + tsx need the compiled `dist/index.js`).
 RUN pnpm --filter @template/errors build
+# Generate the Prisma Client FIRST — packages/db's tsc imports `PrismaClient`
+# from `@prisma/client`, which only exists after `prisma generate` runs (the
+# bare published package has no generated client). The deps stage installs
+# with --ignore-scripts so the postinstall is skipped; we invoke it
+# explicitly here.
+RUN pnpm --filter @template/db exec prisma generate
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
-# Generate the Prisma Client in packages/db. The deps stage installs with
-# --ignore-scripts so @prisma/client's postinstall (which normally runs
-# `prisma generate`) is skipped — we have to invoke it ourselves once the
-# schema files are in place.
-RUN pnpm --filter @template/db exec prisma generate
 # Re-inject the now-built workspace packages into apps/api's node_modules so
 # `pnpm deploy --prod` later copies a complete dist/ for each one. Without
 # this, the initial install in the deps stage hard-linked an empty packages/
