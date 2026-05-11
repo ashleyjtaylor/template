@@ -178,3 +178,26 @@ model Invitation {
   @@index([requestId])
   @@map("invitation")
 }
+
+// Transactional outbox. Producers call `events.emit(event, { tx })` inside a
+// Prisma transaction; the emit writes a row here in the same transaction so
+// the intent commits atomically with the business write. After commit, the
+// `outbox-drain` BullMQ repeatable job pulls unprocessed rows and enqueues
+// each to its target queue. Eliminates the dual-write hole between Postgres
+// and Redis. Idempotency: drainer marks `processed_at` only after a successful
+// enqueue; downstream handlers should also be idempotent on `jobId`.
+model Outbox {
+  entityId    String    @id @map("entity_id")
+  requestId   String?   @map("request_id")
+  topic       String
+  payload     Json
+  targetQueue String    @map("target_queue")
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([processedAt, createdAt])
+  @@index([requestId])
+  @@map("outbox")
+}
