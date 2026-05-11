@@ -17,6 +17,7 @@ COPY apps/api/package.json apps/api/
 COPY infra/cdk/package.json infra/cdk/
 COPY packages/errors/package.json packages/errors/
 COPY packages/db/package.json packages/db/
+COPY packages/events/package.json packages/events/
 # --ignore-scripts skips the root `prepare` (`lefthook install`, which needs a .git dir
 # that doesn't exist in the build context), @prisma/client's postinstall (we run
 # `prisma generate` explicitly below), and esbuild's postinstall.
@@ -26,12 +27,14 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
+COPY packages/events ./packages/events
 COPY apps/api ./apps/api
 # Workspace packages must be built before apps/api can resolve their `import`
 # exports condition at runtime (typecheck reads `types` → src directly, but
 # Node + tsx need the compiled `dist/index.js`).
 RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
+RUN pnpm --filter @template/events build
 # Generate the Prisma Client in packages/db. The deps stage installs with
 # --ignore-scripts so @prisma/client's postinstall (which normally runs
 # `prisma generate`) is skipped — we have to invoke it ourselves once the
