@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import type { LucideIcon } from 'lucide-react'
+import { ExternalLink, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -27,7 +27,8 @@ export function NavItem({ to, icon: Icon, children, external }: NavItemProps) {
     return (
       <a href={to} target="_blank" rel="noopener noreferrer" className={className}>
         <Icon className="size-4" />
-        {children}
+        <span className="flex-1">{children}</span>
+        <ExternalLink aria-hidden className="size-3 text-muted-foreground/60" />
       </a>
     )
   }
