@@ -26,18 +26,16 @@ COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
 COPY packages/events ./packages/events
 COPY apps/worker ./apps/worker
-# Workspace packages must be built before apps/worker can resolve their
-# `import` exports condition at runtime.
-RUN pnpm --filter @template/errors build
-# Generate the Prisma Client FIRST — packages/db's tsc imports `PrismaClient`
-# from `@prisma/client`, which only exists after `prisma generate` runs. The
-# deps stage installs with --ignore-scripts so the postinstall is skipped;
-# we invoke it explicitly here before building @template/db.
+# Re-install now that source files are on disk. See apps/api/Dockerfile for
+# the full reasoning — deps stage's injections lack src/ until this step.
+RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
+# Generate Prisma Client (postinstall is skipped via --ignore-scripts).
 RUN pnpm --filter @template/db exec prisma generate
+# Build workspace packages in dependency order.
+RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
-# Re-inject the now-built workspace packages into apps/worker's node_modules
-# so `pnpm deploy --prod` later copies a complete dist/ for each one.
+# Re-install so the built dist/ propagates into injections before deploy.
 RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
 RUN pnpm --filter @template/worker build
 RUN pnpm --filter @template/worker deploy --prod --ignore-scripts /prod

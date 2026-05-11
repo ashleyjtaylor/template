@@ -29,22 +29,24 @@ COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
 COPY packages/events ./packages/events
 COPY apps/api ./apps/api
-# Workspace packages must be built before apps/api can resolve their `import`
-# exports condition at runtime (typecheck reads `types` → src directly, but
-# Node + tsx need the compiled `dist/index.js`).
-RUN pnpm --filter @template/errors build
-# Generate the Prisma Client FIRST — packages/db's tsc imports `PrismaClient`
-# from `@prisma/client`, which only exists after `prisma generate` runs (the
-# bare published package has no generated client). The deps stage installs
-# with --ignore-scripts so the postinstall is skipped; we invoke it
-# explicitly here.
+# Re-install now that source files are on disk. The deps stage installed with
+# only package.json files copied — workspace injections (packages/*/
+# node_modules/@template/*) were therefore created with no `src/`, so any
+# downstream tsc that resolves `@template/db` via the `types` exports
+# condition (→ ./src/index.ts) would fail. Re-running pnpm install with src
+# in place re-injects with the full source tree.
+RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
+# Generate Prisma Client. The deps stage installs with --ignore-scripts so
+# @prisma/client's postinstall (`prisma generate`) is skipped — invoke it
+# explicitly here. tsc compiling packages/db imports `PrismaClient` from
+# `@prisma/client`, which only exists after this step.
 RUN pnpm --filter @template/db exec prisma generate
+# Build workspace packages in dependency order.
+RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
-# Re-inject the now-built workspace packages into apps/api's node_modules so
-# `pnpm deploy --prod` later copies a complete dist/ for each one. Without
-# this, the initial install in the deps stage hard-linked an empty packages/
-# tree (no dist existed yet).
+# Re-install once more so the built dist/ propagates into injections, then
+# `pnpm deploy --prod` below copies a complete dist/ for each workspace dep.
 RUN pnpm install --frozen-lockfile --filter @template/api... --ignore-scripts
 RUN pnpm --filter @template/api build
 # --ignore-scripts skips the root `prepare` (`lefthook install`); we don't want
