@@ -56,13 +56,17 @@ function PeoplePage() {
   }
 
   const callerRole = myMembership.membership.role
+  // The Invitations endpoints (list / create / revoke) are gated by
+  // `requireAdmin` server-side. Hide the tab + skip mounting the
+  // section for members so we don't fire a request guaranteed to 403.
+  const canManageInvitations = callerRole === 'owner' || callerRole === 'admin'
 
   return (
     <PageShell title="People" subtitle={myMembership.organisation.name}>
       <Tabs defaultValue="members">
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="invitations">Invitations</TabsTrigger>
+          {canManageInvitations && <TabsTrigger value="invitations">Invitations</TabsTrigger>}
         </TabsList>
         <TabsContent value="members">
           <MembersSection
@@ -72,9 +76,11 @@ function PeoplePage() {
             onLeft={() => navigate({ to: '/' })}
           />
         </TabsContent>
-        <TabsContent value="invitations">
-          <InvitationsSection orgId={orgId} callerRole={callerRole} />
-        </TabsContent>
+        {canManageInvitations && (
+          <TabsContent value="invitations">
+            <InvitationsSection orgId={orgId} callerRole={callerRole} />
+          </TabsContent>
+        )}
       </Tabs>
     </PageShell>
   )
