@@ -97,6 +97,7 @@ describe('GET /api/admin/queues', () => {
 
     expect(res.status).toBe(200)
     expect(body.queues.map((q) => q.name).sort()).toEqual([
+      'emails',
       'internal',
       'outbox-publisher',
       'schedules'

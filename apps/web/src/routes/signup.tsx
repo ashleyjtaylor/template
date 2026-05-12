@@ -9,7 +9,12 @@ import { safeRedirect } from '@/lib/redirect'
 import { useSignUp } from '@/modules/session/api'
 
 const searchSchema = z.object({
-  redirect: z.string().optional()
+  redirect: z.string().optional(),
+  // When arriving from /accept-invite, the email is fixed by the
+  // invitation. The form pre-fills it and disables the input — the API
+  // would reject a mismatched address on accept anyway, so editing is
+  // pure UX noise.
+  email: z.email().optional()
 })
 
 export const Route = createFileRoute('/signup')({
@@ -33,8 +38,9 @@ function SignUpPage() {
   const signUp = useSignUp()
   const [firstname, setFirstname] = useState('')
   const [lastname, setLastname] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(search.email ?? '')
   const [password, setPassword] = useState('')
+  const lockEmail = Boolean(search.email)
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -55,7 +61,7 @@ function SignUpPage() {
           Already have an account?{' '}
           <Link
             to="/login"
-            search={{ redirect: search.redirect }}
+            search={{ redirect: search.redirect, email: search.email }}
             className="text-foreground underline-offset-2 hover:underline"
           >
             Sign in
@@ -101,7 +107,7 @@ function SignUpPage() {
           autoComplete="email"
           value={email}
           onChange={setEmail}
-          disabled={signUp.isPending}
+          disabled={signUp.isPending || lockEmail}
         />
         <AuthField
           id="password"
