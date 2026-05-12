@@ -87,7 +87,9 @@ Staff-only operational tools, distinct from feature data routes like `/api/audit
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/admin/queues` | GET (and Bull Board's internal PUT / POST / DELETE for retry / clean / obliterate) | Bull Board dashboard for the BullMQ queues this template ships with — `internal`, `outbox-publisher`, `schedules`. Inspect jobs, retry failures, drill into payloads. Sub-routes registered by Bull Board: `/api/queues` (JSON), `/queue/:queueName/:jobId` (job detail), `/static/*` (assets). Forks add queues by appending to the list in `apps/api/src/modules/admin/queues.ts`. |
+| `/api/admin/queues` | GET (and Bull Board's internal PUT / POST / DELETE for retry / clean / obliterate) | Bull Board dashboard for the BullMQ queues this template ships with — `internal`, `outbox-publisher`, `schedules`, `emails`. Inspect jobs, retry failures, drill into payloads. Sub-routes registered by Bull Board: `/api/queues` (JSON), `/queue/:queueName/:jobId` (job detail), `/static/*` (assets). Forks add queues by appending to the list in `apps/api/src/modules/admin/queues.ts`. |
+| `/api/admin/sent-emails` | GET | List every row in `sent_emails` (worker email attempts). Cursor pagination on `(createdAt DESC, entityId DESC)`. Response: `{ rows, nextCursor }`. List view excludes the rendered HTML body to keep responses small — fetch a single record for the full envelope. |
+| `/api/admin/sent-emails/:entityId` | GET | Detail view: full row including `html`, `text`, `dedupeKey`, `lastError`, `messageId`. Returns **404** when the id is unknown. |
 
 The canonical entry path is `/api/admin/queues` **without** a trailing slash — that's the route Bull Board registers as `/` on its inner Hono app and where the `apps/internal` sidebar links to. The trailing-slash variant (`/api/admin/queues/`) would 404 because Hono treats the two as distinct routes, so we apply the `trimTrailingSlash()` middleware in `app.ts` to 301-redirect those requests to the canonical form. Bull Board itself emits `<base href="/api/admin/queues/">` in the HTML so relative asset URLs in the bundle resolve correctly regardless of which path the user landed on.
 

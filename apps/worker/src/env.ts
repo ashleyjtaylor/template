@@ -17,9 +17,15 @@ const schema = z.object({
   // Per-queue BullMQ Worker concurrency. Forks tune these per-feature.
   WORKER_QUEUE_INTERNAL_CONCURRENCY: z.coerce.number().int().positive().default(5),
   WORKER_QUEUE_SCHEDULES_CONCURRENCY: z.coerce.number().int().positive().default(3),
+  WORKER_QUEUE_EMAILS_CONCURRENCY: z.coerce.number().int().positive().default(5),
   // How often the outbox publisher ticks (ms). Lower = tighter latency on
   // transactional events; higher = less DB churn.
-  OUTBOX_PUBLISHER_INTERVAL_MS: z.coerce.number().int().positive().default(1000)
+  OUTBOX_PUBLISHER_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
+  // Base URL of the customer-facing SPA (apps/web). Used by subscribers to
+  // build absolute links in emails (e.g. accept-invite URL). CDK injects
+  // the WebSpaUrl in deployed envs; local default matches apps/web's vite
+  // dev port.
+  WEB_BASE_URL: z.url().default('http://localhost:5174')
 })
 
 export const env = schema.parse(process.env)

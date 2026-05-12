@@ -12,7 +12,7 @@ End-to-end setup for working on this repo locally — Postgres, Redis, env vars,
 
 ```bash
 pnpm install
-docker compose up -d                       # starts both postgres and redis
+docker compose up -d                       # starts postgres, redis, and mailpit
 cp apps/api/.env.example apps/api/.env
 cp apps/worker/.env.example apps/worker/.env
 ```
@@ -84,6 +84,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
 Without a staff user the login screen still works but every audit-log call returns 403. Create one with the bootstrap script (next section).
+
+## Mailpit (local email inbox)
+
+The worker sends through `@template/email`'s `MailpitSender` whenever `APP_ENV=local`. Mailpit captures every outgoing message and exposes them in a browser UI — nothing leaves your machine.
+
+- SMTP endpoint: `localhost:1025` (default in `apps/worker/.env.example` via `MAILPIT_HOST` + `MAILPIT_PORT`)
+- Web UI: <http://localhost:8025>
+
+After triggering an email-producing flow (e.g. invite a teammate from the SPA), open the UI to inspect the rendered envelope. The same email also lands in the `sent_emails` table and is browsable from the internal SPA at `/emails`.
+
+Note: the deployed env equivalents are SES (`SesSender`) when an `EmailStack` has been provisioned for the fork, or `LogOnlySender` otherwise. Both write a `sent_emails` row regardless of whether anything actually left the VPC.
 
 ## Bull Board
 

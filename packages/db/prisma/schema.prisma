@@ -201,3 +201,32 @@ model Outbox {
   @@index([requestId])
   @@map("outbox")
 }
+
+// One row per attempted email send. Worker handlers upsert by `dedupe_key`
+// before calling the transport, then update status after the transport call
+// returns. Re-runs of the same logical send (e.g. BullMQ retry after a
+// successful SES call but before the worker marked the job done) find
+// `sent_at` already set and no-op — preventing duplicate sends in normal
+// failure modes. Also the source of truth for the `apps/internal` /emails
+// view; bounce / complaint state columns land with the follow-up bounce
+// handling PR.
+model SentEmail {
+  entityId   String    @id @map("entity_id")
+  requestId  String?   @map("request_id")
+  dedupeKey  String    @unique @map("dedupe_key")
+  recipient  String
+  template   String
+  subject    String
+  html       String
+  text       String?
+  status     String
+  lastError  String?   @map("last_error")
+  messageId  String?   @map("message_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  sentAt     DateTime? @map("sent_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@index([recipient, createdAt(sort: Desc)])
+  @@index([requestId])
+  @@map("sent_emails")
+}

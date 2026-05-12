@@ -113,7 +113,7 @@ describe('POST /api/orgs/:orgId/invitations', () => {
       orderBy: { createdAt: 'desc' }
     })
     expect(outbox?.entityId).toMatch(/^obx_/)
-    expect(outbox?.targetQueue).toBe('internal')
+    expect(outbox?.targetQueue).toBe('emails')
     expect(outbox?.payload).toMatchObject({
       type: 'invitation.created',
       invitationId: body.invitation.entityId,

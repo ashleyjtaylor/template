@@ -45,6 +45,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Mailpit for email integration tests. Catches SMTP on :1025; the
+      # web UI on :8025 is unused in CI. @template/email's MailpitSender
+      # talks to localhost:1025 when APP_ENV=local.
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
     env:
       DB_HOST: localhost
       DB_PORT: 5432
@@ -52,6 +60,11 @@ jobs:
       DB_PASSWORD: postgres
       DB_NAME: template_test
       REDIS_URL: redis://localhost:6379
+      APP_ENV: local
+      EMAIL_FROM: noreply@local.test
+      MAILPIT_HOST: localhost
+      MAILPIT_PORT: 1025
+      WEB_BASE_URL: http://localhost:5174
     steps:
       - uses: actions/checkout@v6.0.2
 

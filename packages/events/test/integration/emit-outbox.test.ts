@@ -15,12 +15,14 @@ import {
 
 const cleanState = async () => {
   await prisma.outbox.deleteMany({})
-  // Drain the `internal` queue and remove any failed/completed jobs we left
-  // behind. BullMQ Queue.drain() removes waiting + delayed jobs.
-  const internal = getQueue(QueueName.internal)
-  await internal.drain()
-  await internal.clean(0, 1000, 'completed')
-  await internal.clean(0, 1000, 'failed')
+  // Drain the queues we assert on and remove any failed/completed jobs we
+  // left behind. BullMQ Queue.drain() removes waiting + delayed jobs.
+  for (const name of [QueueName.internal, QueueName.emails]) {
+    const queue = getQueue(name)
+    await queue.drain()
+    await queue.clean(0, 1000, 'completed')
+    await queue.clean(0, 1000, 'failed')
+  }
 }
 
 beforeEach(cleanState)
@@ -39,14 +41,15 @@ describe('emit() without tx', () => {
       invitationId: 'inv_test1',
       organisationId: 'org_test1',
       email: 'a@example.com',
-      role: 'member'
+      role: 'member',
+      rawToken: 'test-raw-token'
     })
 
     const outboxCount = await prisma.outbox.count()
     expect(outboxCount).toBe(0)
 
-    const internal = getQueue(QueueName.internal)
-    const waiting = await internal.getWaitingCount()
+    const emails = getQueue(QueueName.emails)
+    const waiting = await emails.getWaitingCount()
     expect(waiting).toBe(1)
   })
 })
@@ -60,7 +63,8 @@ describe('emit() with tx', () => {
           invitationId: 'inv_test2',
           organisationId: 'org_test2',
           email: 'b@example.com',
-          role: 'admin'
+          role: 'admin',
+          rawToken: 'test-raw-token'
         },
         { tx, requestId: 'req_test2' }
       )
@@ -72,13 +76,13 @@ describe('emit() with tx', () => {
     const [row] = rows
 
     expect(row?.topic).toBe('invitation.created')
-    expect(row?.targetQueue).toBe(QueueName.internal)
+    expect(row?.targetQueue).toBe(QueueName.emails)
     expect(row?.processedAt).toBeNull()
     expect(row?.requestId).toBe('req_test2')
     expect(row?.entityId).toMatch(/^obx_/)
 
-    const internal = getQueue(QueueName.internal)
-    expect(await internal.getWaitingCount()).toBe(0)
+    const emails = getQueue(QueueName.emails)
+    expect(await emails.getWaitingCount()).toBe(0)
   })
 
   it('rolls the outbox row back if the surrounding transaction fails', async () => {
@@ -90,7 +94,8 @@ describe('emit() with tx', () => {
             invitationId: 'inv_rollback',
             organisationId: 'org_rollback',
             email: 'c@example.com',
-            role: 'member'
+            role: 'member',
+            rawToken: 'test-raw-token'
           },
           { tx }
         )
@@ -112,7 +117,8 @@ describe('publishOutbox()', () => {
           invitationId: 'inv_pub1',
           organisationId: 'org_pub1',
           email: 'd@example.com',
-          role: 'member'
+          role: 'member',
+          rawToken: 'test-raw-token'
         },
         { tx }
       )
@@ -126,8 +132,8 @@ describe('publishOutbox()', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]?.processedAt).not.toBeNull()
 
-    const internal = getQueue(QueueName.internal)
-    expect(await internal.getWaitingCount()).toBe(1)
+    const emails = getQueue(QueueName.emails)
+    expect(await emails.getWaitingCount()).toBe(1)
   })
 
   it('is idempotent — running again does not re-enqueue already-processed rows', async () => {
@@ -138,7 +144,8 @@ describe('publishOutbox()', () => {
           invitationId: 'inv_idem',
           organisationId: 'org_idem',
           email: 'e@example.com',
-          role: 'member'
+          role: 'member',
+          rawToken: 'test-raw-token'
         },
         { tx }
       )
@@ -150,7 +157,7 @@ describe('publishOutbox()', () => {
     expect(first).toEqual({ published: 1, failed: 0 })
     expect(second).toEqual({ published: 0, failed: 0 })
 
-    const internal = getQueue(QueueName.internal)
-    expect(await internal.getWaitingCount()).toBe(1)
+    const emails = getQueue(QueueName.emails)
+    expect(await emails.getWaitingCount()).toBe(1)
   })
 })

@@ -35,8 +35,7 @@ packages/
   auth/         better-auth wrapper, session helpers, getCurrentUser, assertCan, getOrgAccessState
   billing/      Stripe SDK wrapper, entitlement resolver, comp grant logic
   db/           Prisma client, repository helpers (soft-delete-aware)
-  email/        react-email templates + SES sender (provider-swappable facade)
-  emails/       email template components (separate from packages/email so templates are pure UI)
+  email/        sender facade (Mailpit/SES/LogOnly) + react-email templates under src/templates/
   entitlements/ pure plan → entitlements lookup
   errors/       typed error classes (ConflictError, NotFoundError, etc.)
   events/       in-process bus + outbox + BullMQ adapter
@@ -325,12 +324,18 @@ sign up → verify email → create org → /onboarding/subscribe → Stripe Che
 ## Email
 
 - **Amazon SES** for delivery, **react-email** for templates.
-- **`packages/email`** is the swap-out facade — app code calls `sendEmail({ to, template, props })`. Today calls SES; a fork can swap to Resend/Postmark in ~50 LOC.
-- **Templates** are React components in `packages/emails/`, previewable via `react-email dev`, snapshot-tested.
-- **Bounce + complaint handling**: SES → SNS → SQS → BullMQ → updates `email_suppressions` table. Better-auth + Stripe handlers check this table before sending.
+- **`packages/email`** is the swap-out facade — app code calls `sendEmail({ to, subject, html, text, dedupeKey, template })`. The transport is selected at runtime from `APP_ENV` + `EMAIL_FROM`:
+  - `APP_ENV=local` → `MailpitSender` (docker-compose service)
+  - else and `EMAIL_FROM` set → `SesSender` (real SES via task-role IAM)
+  - else → `LogOnlySender` (deploy works without SES configured)
+- **Templates** live alongside the facade at `packages/email/src/templates/<name>.tsx` — react-email components paired with a per-template factory (e.g. `invitationEmail({ acceptUrl, ... })` returns the full envelope ready for `sendEmail`).
+- **`sent_emails` table** is the durable history + idempotency anchor. `dedupe_key` is unique; second attempts for the same logical send are a no-op once `sent_at` is populated. Failed sends mark the row `failed` with `last_error`; retries flip it back to `sent` in place.
+- **Async path**: producers `emit('invitation.created', payload, { tx })`. The transactional outbox flushes onto the `emails` BullMQ queue; a worker subscriber renders the template and calls `sendEmail`. No HTTP code path sends mail synchronously.
+- **Admin visibility**: `apps/internal /emails` reads `/api/admin/sent-emails` (list + detail), so staff can audit every attempt — including LogOnly entries.
+- **Bounce + complaint handling**: SES → SNS → SQS → BullMQ → updates `email_suppressions` table. Not yet implemented; the `ConfigurationSet` provisioned by `EmailStack` is the attachment point.
 - **Per-env sender domains**: prod uses `noreply@acme.io`; staging uses `noreply@staging.acme.io` to avoid deliverability cross-contamination.
-- DKIM + SPF + DMARC set up in CDK per fork. Each fork's AWS account needs a one-time SES production-access ticket.
-- **Local dev**: Mailhog catches all outgoing email at `:8025`.
+- **DKIM + SPF + DMARC**: `EmailStack` (CDK) handles DKIM automatically via `EmailIdentity` + Route53 `HostedZone.fromLookup`. SPF + DMARC TXT records are still a manual step per fork. Each fork's AWS account needs a one-time SES production-access ticket to leave sandbox.
+- **Local dev**: Mailpit catches all outgoing email at `:8025`.
 
 ---
 
@@ -638,7 +643,7 @@ When a fork needs to deviate, these are the named places to do it:
 - **New domain entities** → `apps/api/prisma/schema.prisma` + `packages/services/<domain>` + tRPC router under `apps/api/src/routers/<domain>` + `packages/schemas/<domain>` for shared Zod.
 - **New plans / entitlements** → Stripe (products + prices with `planKey` metadata) + `packages/entitlements/plans.ts`.
 - **New `assertCan` actions** → extend the `Action` union in `packages/auth`, add to the role matrix.
-- **New emails** → `packages/emails/<TemplateName>.tsx` + send call via `packages/email`.
+- **New emails** → `packages/email/src/templates/<name>.tsx` (react-email component + factory) + send call via `packages/email`.
 - **New apps (e.g. `apps/portal`)** → `pnpm scaffold:app <name>` (uses `templates/spa-app/`, wires up CDK + CI + DNS + auth boundary).
 - **Branding + UI** → shadcn components in `apps/<name>/src/components/ui` are owned per-app; theme tokens in `apps/<name>/tailwind.config.ts`.
 - **Per-product staff actions** → routes under `apps/internal/src/routes/` + procedures in `apps/api/src/routers/internal/`.
