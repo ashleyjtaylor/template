@@ -89,7 +89,14 @@ async function main() {
   await schedules.add(
     HEARTBEAT_SCHEDULE.name,
     {},
-    { repeat: { every: HEARTBEAT_SCHEDULE.every }, jobId: HEARTBEAT_SCHEDULE.name }
+    {
+      repeat: { every: HEARTBEAT_SCHEDULE.every },
+      jobId: HEARTBEAT_SCHEDULE.name,
+      // Keep only the last few completed/failed occurrences so Bull Board
+      // doesn't accumulate one row every interval forever.
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 10 }
+    }
   )
   await schedules.add(
     CLEANUP_EXPIRED_INVITATIONS_SCHEDULE.name,
@@ -104,7 +111,15 @@ async function main() {
   await outboxQueue.add(
     'publish',
     {},
-    { repeat: { every: env.OUTBOX_PUBLISHER_INTERVAL_MS }, jobId: 'publish' }
+    {
+      repeat: { every: env.OUTBOX_PUBLISHER_INTERVAL_MS },
+      jobId: 'publish',
+      // Same rationale as the heartbeat: this fires every second by
+      // default, so retaining history would flood Bull Board for no
+      // operational benefit. Failures still surface in logs + Sentry.
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 10 }
+    }
   )
 
   registerShutdown({
