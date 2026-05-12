@@ -39,7 +39,8 @@ describe('emit() without tx', () => {
       invitationId: 'inv_test1',
       organisationId: 'org_test1',
       email: 'a@example.com',
-      role: 'member'
+      role: 'member',
+      rawToken: 'test-raw-token'
     })
 
     const outboxCount = await prisma.outbox.count()
@@ -60,7 +61,8 @@ describe('emit() with tx', () => {
           invitationId: 'inv_test2',
           organisationId: 'org_test2',
           email: 'b@example.com',
-          role: 'admin'
+          role: 'admin',
+          rawToken: 'test-raw-token'
         },
         { tx, requestId: 'req_test2' }
       )
@@ -90,7 +92,8 @@ describe('emit() with tx', () => {
             invitationId: 'inv_rollback',
             organisationId: 'org_rollback',
             email: 'c@example.com',
-            role: 'member'
+            role: 'member',
+            rawToken: 'test-raw-token'
           },
           { tx }
         )
@@ -112,7 +115,8 @@ describe('publishOutbox()', () => {
           invitationId: 'inv_pub1',
           organisationId: 'org_pub1',
           email: 'd@example.com',
-          role: 'member'
+          role: 'member',
+          rawToken: 'test-raw-token'
         },
         { tx }
       )
@@ -138,7 +142,8 @@ describe('publishOutbox()', () => {
           invitationId: 'inv_idem',
           organisationId: 'org_idem',
           email: 'e@example.com',
-          role: 'member'
+          role: 'member',
+          rawToken: 'test-raw-token'
         },
         { tx }
       )
