@@ -19,7 +19,8 @@ createBullBoard({
   queues: [
     new BullMQAdapter(getQueue(QueueName.internal)),
     new BullMQAdapter(getQueue(QueueName.schedules)),
-    new BullMQAdapter(getQueue(QueueName.outboxPublisher))
+    new BullMQAdapter(getQueue(QueueName.outboxPublisher)),
+    new BullMQAdapter(getQueue(QueueName.emails))
   ],
   serverAdapter
 })
