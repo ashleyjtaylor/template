@@ -1,4 +1,5 @@
 export { sendEmail } from './send.js'
+export { type InvitationEmailProps, invitationEmail } from './templates/invitation.js'
 export { getTransport, resetTransport, setTransport } from './transport-selector.js'
 export { LogOnlySender } from './transports/log-only.js'
 export { MailpitSender } from './transports/mailpit.js'

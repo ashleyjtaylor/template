@@ -1,6 +1,5 @@
 import { prisma } from '@template/db'
-import { sendEmail } from '@template/email'
-import { invitationEmail } from '@template/emails'
+import { invitationEmail, sendEmail } from '@template/email'
 import { NotFoundError } from '@template/errors'
 import { on } from '@template/events'
 import { env } from '@/env.js'

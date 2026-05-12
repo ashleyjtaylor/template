@@ -3,9 +3,9 @@
   "compilerOptions": {
     "noEmit": true,
     "types": ["node"],
-    // Worker doesn't render JSX itself, but it imports @template/emails
-    // which has .tsx files. Setting jsx here lets tsc parse those files
-    // for type resolution. `react-jsx` matches packages/emails internally.
+    // Worker doesn't render JSX itself, but it imports @template/email
+    // which has .tsx files under src/templates/. Setting jsx here lets
+    // tsc parse those files for type resolution.
     "jsx": "react-jsx",
     "paths": {
       "@/*": ["./src/*"]

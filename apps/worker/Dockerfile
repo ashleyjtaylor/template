@@ -15,6 +15,7 @@ COPY infra/cdk/package.json infra/cdk/
 COPY packages/errors/package.json packages/errors/
 COPY packages/db/package.json packages/db/
 COPY packages/events/package.json packages/events/
+COPY packages/email/package.json packages/email/
 # --ignore-scripts skips lefthook + prisma generate (the latter needs schema
 # files not yet copied in this layer).
 RUN pnpm install --frozen-lockfile --filter @template/worker... --ignore-scripts
@@ -24,11 +25,13 @@ COPY tsconfig.base.json ./
 COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
 COPY packages/events ./packages/events
+COPY packages/email ./packages/email
 COPY apps/worker ./apps/worker
 RUN pnpm --filter @template/db exec prisma generate
 RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
+RUN pnpm --filter @template/email build
 RUN pnpm --filter @template/worker build
 # Strip devDependencies in place; workspace symlinks survive. CI=true skips
 # pnpm's interactive purge prompt — see apps/api/Dockerfile for details.
