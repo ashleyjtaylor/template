@@ -65,7 +65,8 @@ export const createInvitation = async (
         invitationId: inv.entityId,
         organisationId: orgId,
         email: lower,
-        role
+        role,
+        rawToken
       },
       { tx, requestId }
     )
