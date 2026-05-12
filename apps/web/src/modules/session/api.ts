@@ -59,12 +59,13 @@ export interface SignUpInput {
 export const useSignUp = () => {
   const queryClient = useQueryClient()
 
+  // Routes through /api/orgs/sign-up rather than better-auth's bare
+  // /api/auth/sign-up/email so every user lands with a personal org —
+  // no orphan users, no "solo accounts" without billing surface. The
+  // server picks the default org name when `organisationName` is omitted.
   return useMutation({
     mutationFn: (input: SignUpInput) =>
-      api('/api/auth/sign-up/email', z.unknown(), {
-        method: 'POST',
-        body: { ...input, name: `${input.firstname} ${input.lastname}` }
-      }),
+      api('/api/orgs/sign-up', z.unknown(), { method: 'POST', body: input }),
     onSuccess: () => invalidateAfterAuth(queryClient)
   })
 }

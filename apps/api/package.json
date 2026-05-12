@@ -12,18 +12,21 @@
     "start": "node dist/index.js",
     "typecheck": "tsc",
     "test": "vitest run",
-    "bootstrap:staff": "tsx --env-file-if-exists=.env src/scripts/bootstrap-staff.ts"
+    "bootstrap:staff": "tsx --env-file-if-exists=.env src/scripts/bootstrap-staff.ts",
+    "bootstrap:personal-orgs": "tsx --env-file-if-exists=.env src/scripts/bootstrap-personal-orgs.ts"
   },
   "dependencies": {
     "@bull-board/api": "7.0.0",
     "@bull-board/hono": "7.0.0",
     "@hono/node-server": "2.0.1",
+    "@template/billing": "workspace:*",
     "@template/db": "workspace:*",
     "@template/errors": "workspace:*",
     "@template/events": "workspace:*",
     "better-auth": "1.6.9",
     "hono": "4.12.18",
     "pino": "10.3.1",
+    "stripe": "22.1.1",
     "zod": "4.4.3"
   },
   "devDependencies": {

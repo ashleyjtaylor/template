@@ -6,13 +6,17 @@ export const roleSchema = z.enum(['owner', 'admin', 'member'])
 
 export type Role = z.infer<typeof roleSchema>
 
+// Single signup endpoint. The solo `/signup` form omits `organisationName`
+// and the controller falls back to `"${firstname}'s workspace"` so every
+// user lands with at least one org (and therefore one billing surface).
+// The team `/team-signup` form supplies an explicit name.
 export const orgSignUpSchema = z
   .object({
     email: z.email(),
     password: z.string().min(8),
     firstname: z.string().trim().min(1),
     lastname: z.string().trim().min(1),
-    organisationName: organisationNameSchema
+    organisationName: organisationNameSchema.optional()
   })
   .strict()
 
