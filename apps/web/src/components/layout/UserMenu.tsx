@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronsUpDown, LogOut } from 'lucide-react'
+import { ChevronsUpDown, LogOut, Settings } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,12 +8,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { useMyOrgs } from '@/modules/org-management/api'
 import { useSession, useSignOut } from '@/modules/session/api'
 
 export function UserMenu() {
   const { user } = useSession()
   const signOut = useSignOut()
   const navigate = useNavigate()
+  // Resolve the caller's first org so the "Settings" item links to a
+  // concrete /orgs/<id>/settings/people URL. When multi-org UX lands
+  // this becomes "current org".
+  const myOrgs = useMyOrgs()
+  const firstOrgId = myOrgs.data?.[0]?.organisation.entityId
 
   if (!user) return null
 
@@ -48,6 +54,19 @@ export function UserMenu() {
           <span className="truncate">{user.email}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        {firstOrgId && (
+          <DropdownMenuItem
+            onSelect={() =>
+              navigate({
+                to: '/orgs/$orgId/settings/people',
+                params: { orgId: firstOrgId }
+              })
+            }
+          >
+            <Settings className="size-3.5" />
+            Settings
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={handleSignOut}>
           <LogOut className="size-3.5" />
           Sign out
