@@ -130,11 +130,25 @@ function AcceptInvitePage() {
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => navigate({ to: '/login' })}
+              onClick={() =>
+                navigate({
+                  to: '/login',
+                  search: { redirect: `/accept-invite?token=${encodeURIComponent(token)}` }
+                })
+              }
             >
               Sign in
             </Button>
-            <Button type="button" className="flex-1" onClick={() => navigate({ to: '/signup' })}>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={() =>
+                navigate({
+                  to: '/signup',
+                  search: { redirect: `/accept-invite?token=${encodeURIComponent(token)}` }
+                })
+              }
+            >
               Create account
             </Button>
           </div>

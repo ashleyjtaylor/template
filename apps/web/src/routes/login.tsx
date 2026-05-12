@@ -1,12 +1,19 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
+import { z } from 'zod'
 import { AuthCardLayout, AuthField } from '@/components/layout/AuthCardLayout'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api'
+import { safeRedirect } from '@/lib/redirect'
 import { useSignIn } from '@/modules/session/api'
 
+const searchSchema = z.object({
+  redirect: z.string().optional()
+})
+
 export const Route = createFileRoute('/login')({
+  validateSearch: searchSchema,
   component: LoginPage
 })
 
@@ -21,6 +28,7 @@ const friendlyError = (err: unknown): string => {
 
 function LoginPage() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
   const signIn = useSignIn()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,7 +36,10 @@ function LoginPage() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
-    signIn.mutate({ email, password }, { onSuccess: () => navigate({ to: '/' }) })
+    signIn.mutate(
+      { email, password },
+      { onSuccess: () => navigate({ to: safeRedirect(search.redirect) }) }
+    )
   }
 
   return (
@@ -39,7 +50,11 @@ function LoginPage() {
       footer={
         <>
           New here?{' '}
-          <Link to="/signup" className="underline-offset-2 hover:underline">
+          <Link
+            to="/signup"
+            search={{ redirect: search.redirect }}
+            className="underline-offset-2 hover:underline"
+          >
             Create an account
           </Link>
         </>

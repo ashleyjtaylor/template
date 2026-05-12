@@ -99,7 +99,7 @@ export const listInvitations = async (orgId: string, status: 'pending' | 'all') 
     where,
     include: {
       invitedBy: {
-        select: { entityId: true, email: true }
+        select: { entityId: true, email: true, firstname: true, lastname: true }
       }
     },
     orderBy: { createdAt: 'desc' }

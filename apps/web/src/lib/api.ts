@@ -60,5 +60,11 @@ export async function api<T>(
     )
   }
 
+  // 204 No Content responses (e.g. DELETE endpoints) have no body — calling
+  // `res.json()` would throw a SyntaxError. Callers of such endpoints are
+  // expected to pass `z.unknown()` or similar; we parse `undefined` against
+  // the schema so loose schemas pass through.
+  if (res.status === 204) return schema.parse(undefined)
+
   return schema.parse(await res.json())
 }
