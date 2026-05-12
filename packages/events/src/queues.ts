@@ -1,11 +1,12 @@
 import type { DomainEvent } from './types.js'
 
 // Named BullMQ queues this template ships with. Forks add per-feature queues
-// (e.g. `emails`, `webhooks`) here when those features land.
+// (e.g. `webhooks`) here when those features land.
 export const QueueName = {
   internal: 'internal',
   outboxPublisher: 'outbox-publisher',
-  schedules: 'schedules'
+  schedules: 'schedules',
+  emails: 'emails'
 } as const
 
 export type QueueName = (typeof QueueName)[keyof typeof QueueName]
@@ -14,5 +15,5 @@ export type QueueName = (typeof QueueName)[keyof typeof QueueName]
 // and enqueues accordingly. Forks add entries when they extend DomainEvent.
 export const eventQueue = {
   'worker.heartbeat': QueueName.internal,
-  'invitation.created': QueueName.internal
+  'invitation.created': QueueName.emails
 } as const satisfies Record<DomainEvent['type'], QueueName>

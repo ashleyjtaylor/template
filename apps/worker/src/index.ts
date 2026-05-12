@@ -70,6 +70,19 @@ async function main() {
     { connection, concurrency: 1 }
   )
 
+  // Worker for the `emails` queue: routes invitation.created (and future
+  // email-bearing events) through dispatch() to the registered subscribers.
+  // Separate from `internal` so email bursts don't drown out other event
+  // work and forks can tune the email concurrency independently.
+  const emailsWorker = new Worker(
+    QueueName.emails,
+    async (job) => {
+      logger.info({ name: job.name, id: job.id }, 'email-event: processing')
+      await dispatch(job.data)
+    },
+    { connection, concurrency: env.WORKER_QUEUE_EMAILS_CONCURRENCY }
+  )
+
   // Register repeatable jobs. Re-running with the same job name + repeat
   // options is idempotent — BullMQ dedupes by the repeat key.
   const schedules = getQueue(QueueName.schedules)
@@ -102,7 +115,8 @@ async function main() {
         await Promise.all([
           internalWorker.close(),
           schedulesWorker.close(),
-          outboxPublisherWorker.close()
+          outboxPublisherWorker.close(),
+          emailsWorker.close()
         ])
       },
       async () => {

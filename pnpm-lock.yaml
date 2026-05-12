@@ -233,6 +233,12 @@ importers:
       '@template/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@template/email':
+        specifier: workspace:*
+        version: link:../../packages/email
+      '@template/emails':
+        specifier: workspace:*
+        version: link:../../packages/emails
       '@template/errors':
         specifier: workspace:*
         version: link:../../packages/errors
