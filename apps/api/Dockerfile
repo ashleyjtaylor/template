@@ -18,6 +18,7 @@ COPY infra/cdk/package.json infra/cdk/
 COPY packages/errors/package.json packages/errors/
 COPY packages/db/package.json packages/db/
 COPY packages/events/package.json packages/events/
+COPY packages/billing/package.json packages/billing/
 # --ignore-scripts skips lefthook + prisma generate (the latter needs schema
 # files not yet copied in this layer). We invoke prisma generate explicitly
 # in the build stage once schema files are on disk.
@@ -28,6 +29,7 @@ COPY tsconfig.base.json ./
 COPY packages/errors ./packages/errors
 COPY packages/db ./packages/db
 COPY packages/events ./packages/events
+COPY packages/billing ./packages/billing
 COPY apps/api ./apps/api
 # Generate the Prisma Client. Workspace deps are symlinks (default pnpm
 # behaviour), so the generated client lives at packages/db/node_modules/...
@@ -37,6 +39,7 @@ RUN pnpm --filter @template/db exec prisma generate
 RUN pnpm --filter @template/errors build
 RUN pnpm --filter @template/db build
 RUN pnpm --filter @template/events build
+RUN pnpm --filter @template/billing build
 RUN pnpm --filter @template/api build
 # Strip devDependencies in place. --frozen-lockfile + --prod keeps the
 # lockfile honest; the symlink chain to workspace packages survives.

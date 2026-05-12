@@ -39,7 +39,12 @@ const schema = z.object({
   // domains. Defaults to localhost so `pnpm dev` doesn't trip better-auth's
   // "Base URL could not be determined" warning. Production injects the
   // ALB DNS (eventually the real api.<domain>) via infra/cdk/lib/app-stack.ts.
-  BETTER_AUTH_URL: z.string().url().default('http://localhost:3000')
+  BETTER_AUTH_URL: z.string().url().default('http://localhost:3000'),
+  // Public URL of the web SPA — used by the billing module to build
+  // Stripe Checkout `success_url` / `cancel_url` and Customer Portal
+  // `return_url`. Local dev defaults to apps/web's standard vite port;
+  // deployed envs inject the CloudFront URL via app-stack.ts.
+  WEB_BASE_URL: z.string().url().default('http://localhost:5174')
 })
 
 // DB_* env vars and the DATABASE_URL composition live in packages/db. Apps

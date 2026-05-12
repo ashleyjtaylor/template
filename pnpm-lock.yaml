@@ -41,6 +41,9 @@ importers:
       '@hono/node-server':
         specifier: 2.0.1
         version: 2.0.1(hono@4.12.18)
+      '@template/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@template/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -59,6 +62,9 @@ importers:
       pino:
         specifier: 10.3.1
         version: 10.3.1
+      stripe:
+        specifier: 22.1.1
+        version: 22.1.1(@types/node@24.12.3)
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -301,6 +307,28 @@ importers:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+
+  packages/billing:
+    dependencies:
+      '@template/db':
+        specifier: workspace:*
+        version: link:../db
+      '@template/errors':
+        specifier: workspace:*
+        version: link:../errors
+      stripe:
+        specifier: 22.1.1
+        version: 22.1.1(@types/node@24.12.3)
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 4.1.5
+        version: 4.1.5(@types/node@24.12.3)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.11(@types/node@24.12.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0))
 
   packages/db:
     dependencies:
@@ -3699,6 +3727,15 @@ packages:
   strip-json-comments@5.0.3:
     resolution: {integrity: sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==}
     engines: {node: '>=14.16'}
+
+  stripe@22.1.1:
+    resolution: {integrity: sha512-cmodIYP27tBkJ8G7DuGgWw0PFuemlFZbuF3Wwr1TrjFjUa3T7NIgCe6TVwX8BO2ynu+xtTuDGfHafNDCPt9lXA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   strnum@2.3.0:
     resolution: {integrity: sha512-ums3KNd42PGyx5xaoVTO1mjU1bH3NpY4vsrVlnv9PNGqQj8wd7rJ6nEypLrJ7z5vxK5RP0yMLo6J/Gsm62DI5Q==}
@@ -7223,6 +7260,10 @@ snapshots:
       min-indent: 1.0.1
 
   strip-json-comments@5.0.3: {}
+
+  stripe@22.1.1(@types/node@24.12.3):
+    optionalDependencies:
+      '@types/node': 24.12.3
 
   strnum@2.3.0: {}
 

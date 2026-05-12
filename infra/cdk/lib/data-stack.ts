@@ -1,4 +1,11 @@
-import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib'
+import {
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  SecretValue,
+  Stack,
+  type StackProps
+} from 'aws-cdk-lib'
 import {
   InstanceClass,
   InstanceSize,
@@ -47,6 +54,8 @@ type DbSecrets = {
 type AppSecrets = {
   BETTER_AUTH_SECRET: EcsSecret
   REDIS_AUTH_TOKEN: EcsSecret
+  STRIPE_API_KEY: EcsSecret
+  STRIPE_WEBHOOK_SECRET: EcsSecret
 }
 
 // `template` (bare) is a reserved DB name on RDS Postgres because the engine
@@ -176,6 +185,26 @@ export class DataStack extends Stack {
       }
     })
 
+    // Stripe secrets — `stripe_api_key` (sk_test_… or sk_live_…) and
+    // `stripe_webhook_secret` (whsec_…, per-endpoint, issued in the
+    // Stripe dashboard). Both fork-supplied, both empty by default; the
+    // operator populates them out-of-band before the first deploy that
+    // needs the billing surface live. Storing them as a single
+    // multi-key JSON secret (not auto-generated) keeps the per-secret
+    // monthly cost down — same pattern as app-secrets above.
+    const stripeSecretsRaw = new Secret(this, 'StripeSecrets', {
+      secretName: `${PRODUCT}-${envName}-stripe-secrets`,
+      description: 'Stripe API key + webhook signing secret (fork-supplied)',
+      secretObjectValue: {
+        // Empty strings keep the keys present in the JSON document; the
+        // operator updates them via the AWS console / CLI. Without
+        // explicit values here, CDK would auto-generate random strings
+        // that Stripe would never accept.
+        apiKey: SecretValue.unsafePlainText(''),
+        webhookSecret: SecretValue.unsafePlainText('')
+      }
+    })
+
     // Redis AUTH token lives in a separate Secrets Manager entry because
     // generateSecretString can only auto-generate one field per secret; we
     // need a second auto-generated value alongside betterAuthSecret. ElastiCache
@@ -194,7 +223,9 @@ export class DataStack extends Stack {
 
     this.appSecrets = {
       BETTER_AUTH_SECRET: EcsSecret.fromSecretsManager(appSecretsRaw, 'betterAuthSecret'),
-      REDIS_AUTH_TOKEN: EcsSecret.fromSecretsManager(redisSecretsRaw, 'redisAuthToken')
+      REDIS_AUTH_TOKEN: EcsSecret.fromSecretsManager(redisSecretsRaw, 'redisAuthToken'),
+      STRIPE_API_KEY: EcsSecret.fromSecretsManager(stripeSecretsRaw, 'apiKey'),
+      STRIPE_WEBHOOK_SECRET: EcsSecret.fromSecretsManager(stripeSecretsRaw, 'webhookSecret')
     }
 
     // ElastiCache (Valkey 8 — Redis-protocol-compatible, AWS's go-forward

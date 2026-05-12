@@ -121,13 +121,19 @@ model AuditLog {
 // (no separate vendor `id`). Cascade-on-org-delete wired today; once
 // soft-delete lands those cascades still apply at hard-delete time.
 model Organisation {
-  entityId  String   @id @map("entity_id")
-  requestId String?  @map("request_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  entityId         String   @id @map("entity_id")
+  requestId        String?  @map("request_id")
+  name             String
+  // Set the first time a Checkout session completes for the org. Stripe
+  // creates the customer during Checkout; we capture it from the
+  // `checkout.session.completed` webhook. Unique so the same customer
+  // can't be linked to two orgs.
+  stripeCustomerId String?  @unique @map("stripe_customer_id")
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  memberships Membership[]
-  invitations Invitation[]
+  memberships  Membership[]
+  invitations  Invitation[]
+  subscription Subscription?
 
   @@index([requestId])
   @@map("organisation")
@@ -229,4 +235,48 @@ model SentEmail {
   @@index([recipient, createdAt(sort: Desc)])
   @@index([requestId])
   @@map("sent_emails")
+}
+
+// Stripe subscription mirror — one row per organisation, UPSERTed by
+// the `customer.subscription.*` webhook handlers. The MVP doesn't keep
+// historical rows (re-subscribing after cancel rotates
+// `stripeSubscriptionId` on the same row); invoice history graduates
+// into its own table when the internal-app surfaces it. `status` carries
+// the Stripe enum — `active`, `trialing`, `past_due`, `canceled`,
+// `incomplete`, `incomplete_expired`, `unpaid`. `getOrgAccessState`
+// reads this row to decide paid / past_due / paywalled.
+model Subscription {
+  entityId             String    @id @map("entity_id")
+  organisationId       String    @unique @map("organisation_id")
+  stripeSubscriptionId String    @unique @map("stripe_subscription_id")
+  stripeCustomerId     String    @map("stripe_customer_id")
+  stripePriceId        String    @map("stripe_price_id")
+  planKey              String    @map("plan_key")
+  status               String
+  currentPeriodStart   DateTime  @map("current_period_start")
+  currentPeriodEnd     DateTime  @map("current_period_end")
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  canceledAt           DateTime? @map("canceled_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  requestId            String?   @map("request_id")
+
+  organisation Organisation @relation(fields: [organisationId], references: [entityId], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@index([status])
+  @@map("subscription")
+}
+
+// Idempotency anchor for the Stripe webhook. Insert before processing;
+// uniqueness on `id` short-circuits replays. Payload deliberately not
+// stored — Stripe's dashboard is the authoritative archive and storing
+// it just bloats rows.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([type, processedAt(sort: Desc)])
+  @@map("stripe_event")
 }

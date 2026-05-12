@@ -62,7 +62,12 @@ export const orgSignUpController = async (
 
   const json = (await response.json()) as { user: SignUpUser }
 
-  const result = await createOrg(input.organisationName, json.user.id, json.user.entityId)
+  // Personal-org default — `/signup` form omits the name; `/team-signup`
+  // form supplies it explicitly. The "workspace" suffix keeps the default
+  // readable when forks surface the org name in their nav.
+  const orgName = input.organisationName ?? `${input.firstname}'s workspace`
+
+  const result = await createOrg(orgName, json.user.id, json.user.entityId)
 
   return {
     kind: 'success',

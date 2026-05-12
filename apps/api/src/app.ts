@@ -13,8 +13,10 @@ import { requireStaff } from '@/middleware/require-staff.js'
 import { queuesAdminPlugin } from '@/modules/admin/queues.js'
 import { sentEmailsAdminRoutes } from '@/modules/admin/sent-emails/routes.js'
 import { auditLogRoutes } from '@/modules/audit-log/routes.js'
+import { billingRoutes } from '@/modules/billing/routes.js'
 import { orgInvitationAcceptRoutes, orgInvitationRoutes } from '@/modules/org-invitations/routes.js'
 import { orgRoutes } from '@/modules/organisations/routes.js'
+import { stripeWebhookRoutes } from '@/modules/webhooks/stripe.js'
 
 export interface AppOptions {
   gitSha: string
@@ -62,8 +64,14 @@ export function createApp({
   app.route('/api/admin/sent-emails', sentEmailsAdminRoutes)
   app.route('/api/audit-log', auditLogRoutes)
   app.route('/api/orgs', orgRoutes)
+  app.route('/api/orgs', billingRoutes)
   app.route('/api/orgs/:orgId/invitations', orgInvitationRoutes)
   app.route('/api/invitations', orgInvitationAcceptRoutes)
+  // Stripe webhook — no auth (signature verification inside the handler).
+  // Mounted last so prior /api/orgs routes don't shadow it; in practice
+  // /api/webhooks/* doesn't collide with anything but order is cheap
+  // insurance.
+  app.route('/api/webhooks', stripeWebhookRoutes)
 
   app.onError(errorHandler)
 

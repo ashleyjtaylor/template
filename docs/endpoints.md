@@ -145,6 +145,26 @@ The `link` returned from create-invitation is a relative path: it's rendered by 
 | Expired invite | 410 Gone | **409** `Expired` (we use 409 for every invite-state mismatch for consistency) |
 | Revoked invite | 410 / 404 | **409** `AlreadyRevoked` |
 
+## `/api/orgs/:orgId/billing/*` and `/api/webhooks/stripe`
+
+Stripe Checkout + Customer Portal + Stripe webhook. Per-org subscription model — every user has at least one organisation (solo signup auto-creates a Personal org), and billing always operates at org granularity. Implemented in `apps/api/src/modules/billing/` (org-scoped routes) and `apps/api/src/modules/webhooks/stripe.ts` (the unsigned webhook). Customer creation is **lazy**: Stripe creates the customer during Checkout, and the webhook handler links it to the org from `checkout.session.completed`.
+
+The org-scoped routes are fork-opt-in: until the Stripe env vars (`STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_PRO`) are populated, `POST /billing/checkout-session` and `POST /billing/portal-session` return **500** with `details.reason: 'BillingNotConfigured'`. `GET /billing/access-state` always works because the resolver reads only the local DB.
+
+| Route | Method | Auth | Purpose |
+|---|---|---|---|
+| `/api/orgs/:orgId/billing/checkout-session` | POST | session + admin | Mint a Stripe Checkout session for the Pro plan. Body: `{}`. Response: `{ url }`. SPA does `window.location = url`. Returns **409** `AlreadySubscribed` if the org already has an active / trialing / past_due subscription (use the Portal to change plans). |
+| `/api/orgs/:orgId/billing/portal-session` | POST | session + admin | Mint a Stripe Customer Portal session. Body: `{}`. Response: `{ url }`. Returns **409** `NoStripeCustomer` if the org has never completed a Checkout. |
+| `/api/orgs/:orgId/billing/access-state` | GET | session + member | Returns `{ state: 'paid' \| 'past_due' \| 'paywalled', subscription?: { planKey, status, currentPeriodEnd, cancelAtPeriodEnd } }`. `past_due` still grants access (Stripe Smart Retries running). Consumed by the SPA's `OrgPaywallGate` to redirect paywalled org-scoped routes to `/onboarding/subscribe`. |
+| `/api/webhooks/stripe` | POST | none (signature) | Stripe → API. Raw-body verification via `STRIPE_WEBHOOK_SECRET`. Idempotent via `stripe_event.id` insert; replays return 200 with `replay: true`. Handles `customer.subscription.created` / `.updated` / `.deleted` (UPSERTs / cancels the `subscription` mirror row) and `checkout.session.completed` (links the org to the freshly-created Stripe customer). Unknown event types log at debug + 200. |
+
+### Status code deviations
+
+| Flow | Expected | Actual |
+|---|---|---|
+| Webhook with bad signature | 401 | **401** with `error: 'Invalid signature'`; never reaches handler. |
+| Billing routes on an unconfigured fork | 503 | **500** with `details.reason: 'BillingNotConfigured'` — the template's `InternalError` class maps to 500; if/when a `ServiceUnavailableError` lands, swap. |
+
 ### Status code deviations from typical REST
 
 Better-auth returns its own codes for some flows; the integration tests pin the actual values:

@@ -79,7 +79,7 @@ graph TB
 
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
-- `template-staging-data` — ECR repos (api + worker), RDS Postgres, ElastiCache Valkey 8 replication group, Secrets Manager (DB credentials + app secrets + redis secrets), ECS cluster, migrator + bootstrap-staff task definitions and their log groups
+- `template-staging-data` — ECR repos (api + worker), RDS Postgres, ElastiCache Valkey 8 replication group, Secrets Manager (DB credentials + app secrets + redis secrets + stripe secrets), ECS cluster, migrator + bootstrap-staff task definitions and their log groups
 - `template-staging-email` — *(optional)* SES `EmailIdentity` + DKIM (auto-CNAMEs via Route53 hosted-zone lookup) + a default `ConfigurationSet`. Only instantiated when the fork passes `-c emailDomain.staging=mail.example.com`. Without it the worker keeps `LogOnlySender` and no SES IAM grants are added.
 - `template-staging-app` — Fargate services (api + worker), task defs, ALB, target group + listener for api, log groups, internal + web SPA S3 buckets + CloudFront distributions (one per SPA). When `template-staging-email` is present, the worker container env gets `EMAIL_FROM` + `EMAIL_CONFIGURATION_SET` and the worker task role is granted `ses:SendEmail` / `ses:SendRawEmail` scoped to the SES `EmailIdentity` ARN. `AWS_REGION` and `WEB_BASE_URL` are always injected on the worker container.
 
@@ -150,7 +150,37 @@ event (e.g. invitation.created)
 - **`sent_emails` table** (Postgres) is the durable history + idempotency anchor. `dedupe_key` is unique; second attempts with the same key are a no-op once `sent_at` is populated. Admin SPA reads `/api/admin/sent-emails` to render the list + detail view at `apps/internal /emails`.
 - **Local dev** uses Mailpit (docker-compose service on `:1025` for SMTP, `:8025` for the web UI). No SES credentials required locally.
 
-Stripe / Sentry / OAuth providers will get their own subsections here as they are wired in.
+### Stripe (optional)
+
+Per-organisation Stripe subscription. Like SES, this surface is fork-opt-in — until the Stripe secrets are populated and the price-id context flag is supplied, the routes return a clean "billing not configured" 500 and the SPA's paywall guard never fires.
+
+```
+sign up                             /signup auto-creates a Personal org (one txn)
+  ↓
+click into org                      /orgs/$orgId/* → OrgPaywallGate fires
+  ↓
+paywalled                           redirect to /onboarding/subscribe?orgId=…
+  ↓
+POST /billing/checkout-session      Stripe Checkout URL → window.location
+  ↓
+Stripe Checkout completes           customer + subscription created in Stripe
+  ↓
+Stripe → POST /api/webhooks/stripe  raw-body signature check → stripe_event id
+                                    insert (idempotency anchor) → UPSERT
+                                    subscription mirror + link customer to org
+  ↓
+SPA polls access-state              flips to `paid` → routes into the org
+```
+
+- **`packages/billing`** — Stripe SDK wrapper. `getOrgAccessState(orgId)` (the sole paywall resolver: `paid | past_due | paywalled`). Checkout + Customer Portal helpers. `isBillingConfigured()` predicate gating real Stripe-touching routes. Single Pro plan in `entitlements.ts` for now — multi-plan is a follow-up ticket.
+- **`subscription` table** (Postgres) is the mirror — one row per org, UPSERTed by the webhook. `getOrgAccessState` reads it. Re-subscribing after cancel rotates `stripe_subscription_id` on the same row.
+- **`stripe_event` table** — idempotency anchor. Insert before processing; the unique-id collision short-circuits Stripe's automatic retries on the same event. Payload deliberately not stored (Stripe's dashboard is the archive).
+- **CDK secrets**: `template-${env}-stripe-secrets` Secrets Manager entry holds `apiKey` + `webhookSecret` (operator-supplied; empty by default). Injected on api + worker containers as `STRIPE_API_KEY` + `STRIPE_WEBHOOK_SECRET`. Non-secret env (`STRIPE_PRICE_ID_PRO`, `STRIPE_PORTAL_RETURN_URL`, `WEB_BASE_URL`) is set by AppStack — the price id is fork-supplied via `-c stripePriceIdPro.<env>=price_…`.
+- **Customer Portal** handles change-card / cancel / view-invoices — we don't reimplement any of it. `apps/web /orgs/$orgId/settings/billing` mints a Portal session and redirects there.
+- **Local dev** uses Stripe test mode + the Stripe CLI (`stripe listen --forward-to localhost:3000/api/webhooks/stripe`). No mock layer. See [`docs/runbooks/billing-smoke.md`](runbooks/billing-smoke.md).
+- **Out of scope for the spine** (separate tickets): per-seat sync, comp grants, conversion nudges, internal-app refund / cancel / invoice-history UI, multi-plan pricing page, `past_due` banner, `invoices` mirror table.
+
+Sentry / OAuth providers will get their own subsections here as they are wired in.
 
 ## What is NOT deployed (yet)
 

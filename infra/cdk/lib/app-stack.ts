@@ -51,6 +51,10 @@ export interface AppStackProps extends StackProps {
   emailDomain?: string
   emailIdentityArn?: string
   emailConfigurationSetName?: string
+  // Stripe price id for the Pro plan — fork-supplied via context flag
+  // `stripePriceIdPro.<env>`. Empty string until configured; the billing
+  // module's `isBillingConfigured()` predicate gates real Stripe calls.
+  stripePriceIdPro?: string
 }
 
 export class AppStack extends Stack {
@@ -72,7 +76,8 @@ export class AppStack extends Stack {
       imageTag,
       emailDomain,
       emailIdentityArn,
-      emailConfigurationSetName
+      emailConfigurationSetName,
+      stripePriceIdPro
     } = props
 
     const logGroup = new LogGroup(this, 'ApiLogs', {
@@ -219,7 +224,14 @@ export class AppStack extends Stack {
         CORS_ORIGINS: [
           `https://${internalDistribution.distributionDomainName}`,
           `https://${webDistribution.distributionDomainName}`
-        ].join(',')
+        ].join(','),
+        // Billing — the web SPA's public origin (Checkout success/cancel
+        // URLs + Customer Portal return URL are built from this).
+        // STRIPE_PRICE_ID_PRO is fork-supplied; the billing module
+        // boots regardless and refuses Checkout requests until it's set.
+        WEB_BASE_URL: `https://${webDistribution.distributionDomainName}`,
+        STRIPE_PORTAL_RETURN_URL: `https://${webDistribution.distributionDomainName}`,
+        STRIPE_PRICE_ID_PRO: stripePriceIdPro ?? ''
       },
       secrets: { ...dbSecrets, ...appSecrets },
       // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
@@ -305,6 +317,8 @@ export class AppStack extends Stack {
       REDIS_PORT: string
       AWS_REGION: string
       WEB_BASE_URL: string
+      STRIPE_PORTAL_RETURN_URL: string
+      STRIPE_PRICE_ID_PRO: string
       EMAIL_FROM?: string
       EMAIL_CONFIGURATION_SET?: string
     } = {
@@ -313,7 +327,12 @@ export class AppStack extends Stack {
       REDIS_HOST: redisHost,
       REDIS_PORT: redisPort,
       AWS_REGION: this.region,
-      WEB_BASE_URL: `https://${webDistribution.distributionDomainName}`
+      WEB_BASE_URL: `https://${webDistribution.distributionDomainName}`,
+      // Stripe non-secret env. The worker doesn't touch Stripe today
+      // but seat-sync (next ticket) imports @template/billing — which
+      // validates these on module load — so they must be present.
+      STRIPE_PORTAL_RETURN_URL: `https://${webDistribution.distributionDomainName}`,
+      STRIPE_PRICE_ID_PRO: stripePriceIdPro ?? ''
     }
 
     if (emailDomain) {
