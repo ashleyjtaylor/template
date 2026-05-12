@@ -80,7 +80,8 @@ graph TB
 **Stacks** (CloudFormation)
 - `template-staging-network` — VPC, NAT, security groups
 - `template-staging-data` — ECR repos (api + worker), RDS Postgres, ElastiCache Valkey 8 replication group, Secrets Manager (DB credentials + app secrets + redis secrets), ECS cluster, migrator + bootstrap-staff task definitions and their log groups
-- `template-staging-app` — Fargate services (api + worker), task defs, ALB, target group + listener for api, log groups, internal + web SPA S3 buckets + CloudFront distributions (one per SPA)
+- `template-staging-email` — *(optional)* SES `EmailIdentity` + DKIM (auto-CNAMEs via Route53 hosted-zone lookup) + a default `ConfigurationSet`. Only instantiated when the fork passes `-c emailDomain.staging=mail.example.com`. Without it the worker keeps `LogOnlySender` and no SES IAM grants are added.
+- `template-staging-app` — Fargate services (api + worker), task defs, ALB, target group + listener for api, log groups, internal + web SPA S3 buckets + CloudFront distributions (one per SPA). When `template-staging-email` is present, the worker container env gets `EMAIL_FROM` + `EMAIL_CONFIGURATION_SET` and the worker task role is granted `ses:SendEmail` / `ses:SendRawEmail` scoped to the SES `EmailIdentity` ARN. `AWS_REGION` and `WEB_BASE_URL` are always injected on the worker container.
 
 All stacks have `terminationProtection: false` so `cdk destroy "template-staging-*"` tears them down without manual intervention.
 
@@ -130,9 +131,26 @@ graph LR
 
 ## External integrations
 
-None at the moment.
+### SES (optional)
 
-Stripe / SES / Sentry / OAuth providers will get their own subsection here as they are wired in.
+The email path is fork-opt-in. The transactional flow is:
+
+```
+event (e.g. invitation.created)
+  → BullMQ `emails` queue
+  → worker subscriber renders react-email template
+  → @template/email `sendEmail()` upserts a `sent_emails` row (dedupe + history)
+  → transport-selector picks
+      • MailpitSender   when APP_ENV=local
+      • SesSender       when EMAIL_FROM is set (deployed env with EmailStack)
+      • LogOnlySender   otherwise (deploys without SES still succeed)
+```
+
+- **EmailStack** (CDK) verifies the sending domain via SES `EmailIdentity` + auto-DKIM through Route53. Only created when the fork supplies `-c emailDomain.<env>=...`. SES production-access (out of sandbox) is a manual AWS support ticket — out of CDK's scope.
+- **`sent_emails` table** (Postgres) is the durable history + idempotency anchor. `dedupe_key` is unique; second attempts with the same key are a no-op once `sent_at` is populated. Admin SPA reads `/api/admin/sent-emails` to render the list + detail view at `apps/internal /emails`.
+- **Local dev** uses Mailpit (docker-compose service on `:1025` for SMTP, `:8025` for the web UI). No SES credentials required locally.
+
+Stripe / Sentry / OAuth providers will get their own subsections here as they are wired in.
 
 ## What is NOT deployed (yet)
 

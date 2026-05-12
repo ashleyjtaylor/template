@@ -325,12 +325,18 @@ sign up → verify email → create org → /onboarding/subscribe → Stripe Che
 ## Email
 
 - **Amazon SES** for delivery, **react-email** for templates.
-- **`packages/email`** is the swap-out facade — app code calls `sendEmail({ to, template, props })`. Today calls SES; a fork can swap to Resend/Postmark in ~50 LOC.
-- **Templates** are React components in `packages/emails/`, previewable via `react-email dev`, snapshot-tested.
-- **Bounce + complaint handling**: SES → SNS → SQS → BullMQ → updates `email_suppressions` table. Better-auth + Stripe handlers check this table before sending.
+- **`packages/email`** is the swap-out facade — app code calls `sendEmail({ to, subject, html, text, dedupeKey, template })`. The transport is selected at runtime from `APP_ENV` + `EMAIL_FROM`:
+  - `APP_ENV=local` → `MailpitSender` (docker-compose service)
+  - else and `EMAIL_FROM` set → `SesSender` (real SES via task-role IAM)
+  - else → `LogOnlySender` (deploy works without SES configured)
+- **`packages/emails`** holds the rendered React components + per-template factories (e.g. `invitationEmail({ acceptUrl, ... })` returns the full envelope ready for `sendEmail`).
+- **`sent_emails` table** is the durable history + idempotency anchor. `dedupe_key` is unique; second attempts for the same logical send are a no-op once `sent_at` is populated. Failed sends mark the row `failed` with `last_error`; retries flip it back to `sent` in place.
+- **Async path**: producers `emit('invitation.created', payload, { tx })`. The transactional outbox flushes onto the `emails` BullMQ queue; a worker subscriber renders the template and calls `sendEmail`. No HTTP code path sends mail synchronously.
+- **Admin visibility**: `apps/internal /emails` reads `/api/admin/sent-emails` (list + detail), so staff can audit every attempt — including LogOnly entries.
+- **Bounce + complaint handling**: SES → SNS → SQS → BullMQ → updates `email_suppressions` table. Not yet implemented; the `ConfigurationSet` provisioned by `EmailStack` is the attachment point.
 - **Per-env sender domains**: prod uses `noreply@acme.io`; staging uses `noreply@staging.acme.io` to avoid deliverability cross-contamination.
-- DKIM + SPF + DMARC set up in CDK per fork. Each fork's AWS account needs a one-time SES production-access ticket.
-- **Local dev**: Mailhog catches all outgoing email at `:8025`.
+- **DKIM + SPF + DMARC**: `EmailStack` (CDK) handles DKIM automatically via `EmailIdentity` + Route53 `HostedZone.fromLookup`. SPF + DMARC TXT records are still a manual step per fork. Each fork's AWS account needs a one-time SES production-access ticket to leave sandbox.
+- **Local dev**: Mailpit catches all outgoing email at `:8025`.
 
 ---
 

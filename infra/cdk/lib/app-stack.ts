@@ -25,6 +25,7 @@ import {
   Protocol,
   TargetType
 } from 'aws-cdk-lib/aws-elasticloadbalancingv2'
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam'
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs'
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
 import type { Construct } from 'constructs'
@@ -44,6 +45,12 @@ export interface AppStackProps extends StackProps {
   redisHost: string
   redisPort: string
   imageTag: string
+  // Optional email props from EmailStack. When omitted, the worker falls
+  // back to @template/email's LogOnlySender — sends are written to the
+  // worker log group instead of leaving the VPC.
+  emailDomain?: string
+  emailIdentityArn?: string
+  emailConfigurationSetName?: string
 }
 
 export class AppStack extends Stack {
@@ -62,7 +69,10 @@ export class AppStack extends Stack {
       appSecrets,
       redisHost,
       redisPort,
-      imageTag
+      imageTag,
+      emailDomain,
+      emailIdentityArn,
+      emailConfigurationSetName
     } = props
 
     const logGroup = new LogGroup(this, 'ApiLogs', {
@@ -282,21 +292,60 @@ export class AppStack extends Stack {
       memoryLimitMiB: 512
     })
 
+    // Worker env. `AWS_REGION` is always set so the SES SDK + any other AWS
+    // SDK client picks up the right region without per-client config.
+    // `WEB_BASE_URL` is the public web CloudFront URL — emails rendered in
+    // the worker need this to build absolute links (e.g. invite accept URLs).
+    // `EMAIL_FROM` is only set when an EmailStack has verified a sending
+    // domain; otherwise @template/email falls back to LogOnlySender.
+    const workerEnv: {
+      NODE_ENV: string
+      APP_ENV: string
+      REDIS_HOST: string
+      REDIS_PORT: string
+      AWS_REGION: string
+      WEB_BASE_URL: string
+      EMAIL_FROM?: string
+      EMAIL_CONFIGURATION_SET?: string
+    } = {
+      NODE_ENV: 'production',
+      APP_ENV: envName,
+      REDIS_HOST: redisHost,
+      REDIS_PORT: redisPort,
+      AWS_REGION: this.region,
+      WEB_BASE_URL: `https://${webDistribution.distributionDomainName}`
+    }
+
+    if (emailDomain) {
+      workerEnv.EMAIL_FROM = `noreply@${emailDomain}`
+    }
+
+    if (emailConfigurationSetName) {
+      workerEnv.EMAIL_CONFIGURATION_SET = emailConfigurationSetName
+    }
+
     workerTaskDef.addContainer('worker', {
       image: ContainerImage.fromEcrRepository(workerRepo, imageTag),
       logging: LogDrivers.awsLogs({ logGroup: workerLogGroup, streamPrefix: 'worker' }),
-      environment: {
-        NODE_ENV: 'production',
-        APP_ENV: envName,
-        REDIS_HOST: redisHost,
-        REDIS_PORT: redisPort
-      },
+      environment: workerEnv,
       secrets: { ...dbSecrets, ...appSecrets },
       // Window between SIGTERM and SIGKILL. Must stay >= SHUTDOWN_TIMEOUT_MS
       // in apps/worker/src/env.ts so BullMQ Workers can drain in-flight jobs
       // before ECS force-kills the container.
       stopTimeout: Duration.seconds(30)
     })
+
+    // Grant ses:SendEmail scoped to the verified EmailIdentity. Without
+    // emailIdentityArn the worker keeps LogOnlySender behaviour and no
+    // SES permissions are needed.
+    if (emailIdentityArn) {
+      workerTaskDef.taskRole.addToPrincipalPolicy(
+        new PolicyStatement({
+          actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+          resources: [emailIdentityArn]
+        })
+      )
+    }
 
     const workerService = new FargateService(this, 'WorkerService', {
       cluster,

@@ -2,6 +2,7 @@ import { App, type StackProps } from 'aws-cdk-lib'
 import { AppStack } from '../lib/app-stack.js'
 import { aws, type EnvName, PRODUCT, tagsFor } from '../lib/config.js'
 import { DataStack } from '../lib/data-stack.js'
+import { EmailStack } from '../lib/email-stack.js'
 import { NetworkStack } from '../lib/network-stack.js'
 
 const app = new App()
@@ -12,6 +13,15 @@ const app = new App()
 // Docker resolves to `:latest` — pulls fail because we never push `:latest`.
 // `:placeholder` fails just as loudly but with a clearer error message.
 const imageTag = app.node.tryGetContext('imageTag') || 'placeholder'
+
+// Optional per-env sending domain. Forks set this via cdk.json or
+// `-c emailDomain.staging=mail.example.com`. Without it, EmailStack is not
+// instantiated and the worker keeps @template/email's LogOnlySender.
+const emailDomainFor = (env: EnvName): string | undefined => {
+  const value = app.node.tryGetContext(`emailDomain.${env}`)
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
 
 const envs: EnvName[] = ['staging', 'production']
 
@@ -33,6 +43,15 @@ for (const env of envs) {
     imageTag
   })
 
+  const emailDomain = emailDomainFor(env)
+  const emailStack = emailDomain
+    ? new EmailStack(app, `${PRODUCT}-${env}-email`, {
+        ...baseProps,
+        envName: env,
+        emailDomain
+      })
+    : undefined
+
   new AppStack(app, `${PRODUCT}-${env}-app`, {
     ...baseProps,
     envName: env,
@@ -46,6 +65,9 @@ for (const env of envs) {
     appSecrets: data.appSecrets,
     redisHost: data.redisHost,
     redisPort: data.redisPort,
-    imageTag
+    imageTag,
+    emailDomain,
+    emailIdentityArn: emailStack?.identityArn,
+    emailConfigurationSetName: emailStack?.configurationSetName
   })
 }
