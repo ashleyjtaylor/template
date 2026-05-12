@@ -133,7 +133,10 @@ function AcceptInvitePage() {
               onClick={() =>
                 navigate({
                   to: '/login',
-                  search: { redirect: `/accept-invite?token=${encodeURIComponent(token)}` }
+                  search: {
+                    redirect: `/accept-invite?token=${encodeURIComponent(token)}`,
+                    email
+                  }
                 })
               }
             >
@@ -145,7 +148,10 @@ function AcceptInvitePage() {
               onClick={() =>
                 navigate({
                   to: '/signup',
-                  search: { redirect: `/accept-invite?token=${encodeURIComponent(token)}` }
+                  search: {
+                    redirect: `/accept-invite?token=${encodeURIComponent(token)}`,
+                    email
+                  }
                 })
               }
             >

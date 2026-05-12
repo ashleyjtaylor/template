@@ -9,7 +9,11 @@ import { safeRedirect } from '@/lib/redirect'
 import { useSignIn } from '@/modules/session/api'
 
 const searchSchema = z.object({
-  redirect: z.string().optional()
+  redirect: z.string().optional(),
+  // When arriving from /accept-invite, the email is fixed by the
+  // invitation. Pre-fill and disable the field so the invitee can't
+  // change it (the API would reject a mismatch on accept).
+  email: z.email().optional()
 })
 
 export const Route = createFileRoute('/login')({
@@ -30,8 +34,9 @@ function LoginPage() {
   const navigate = useNavigate()
   const search = Route.useSearch()
   const signIn = useSignIn()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(search.email ?? '')
   const [password, setPassword] = useState('')
+  const lockEmail = Boolean(search.email)
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -52,7 +57,7 @@ function LoginPage() {
           New here?{' '}
           <Link
             to="/signup"
-            search={{ redirect: search.redirect }}
+            search={{ redirect: search.redirect, email: search.email }}
             className="underline-offset-2 hover:underline"
           >
             Create an account
@@ -75,10 +80,10 @@ function LoginPage() {
           label="Email"
           type="email"
           autoComplete="email"
-          autoFocus
+          autoFocus={!lockEmail}
           value={email}
           onChange={setEmail}
-          disabled={signIn.isPending}
+          disabled={signIn.isPending || lockEmail}
         />
         <AuthField
           id="password"
