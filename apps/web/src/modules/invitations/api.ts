@@ -23,6 +23,13 @@ export const useAcceptInvite = () => {
       api(`/api/invitations/${encodeURIComponent(token)}/accept`, acceptInvitationResponseSchema, {
         method: 'POST'
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['session'] })
+    // Accepting an invite adds a new org membership — the Home page's
+    // Organisations card and the UserMenu Settings link both need to
+    // see the new org without waiting for a natural refetch.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['session'] }),
+        queryClient.invalidateQueries({ queryKey: ['orgs'] })
+      ])
   })
 }
