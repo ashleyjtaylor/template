@@ -1,0 +1,6 @@
+export { sendEmail } from './send.js'
+export { getTransport, resetTransport, setTransport } from './transport-selector.js'
+export { LogOnlySender } from './transports/log-only.js'
+export { MailpitSender } from './transports/mailpit.js'
+export { SesSender } from './transports/ses.js'
+export type { EmailTransport, SendEmailParams, TransportResult } from './types.js'

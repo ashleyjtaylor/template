@@ -1,0 +1,36 @@
+{
+  "name": "@template/email",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "3.1045.0",
+    "@template/db": "workspace:*",
+    "@template/errors": "workspace:*",
+    "nodemailer": "8.0.7",
+    "pino": "10.3.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "8.0.0",
+    "typescript": "6.0.3"
+  }
+}
