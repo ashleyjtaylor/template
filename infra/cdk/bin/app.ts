@@ -23,6 +23,18 @@ const emailDomainFor = (env: EnvName): string | undefined => {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+// Per-env Stripe Pro price id. Forks set via cdk.json or
+// `-c stripePriceIdPro.staging=price_…`. Empty until configured — the
+// billing module's `isBillingConfigured()` predicate gates real Stripe
+// calls and returns a 503 from /api/orgs/:orgId/billing/* in the
+// meantime. Webhook + Checkout secrets live in Secrets Manager and are
+// managed out-of-band (see docs/runbooks/billing-smoke.md).
+const stripePriceIdProFor = (env: EnvName): string | undefined => {
+  const value = app.node.tryGetContext(`stripePriceIdPro.${env}`)
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
 const envs: EnvName[] = ['staging', 'production']
 
 for (const env of envs) {
@@ -68,6 +80,7 @@ for (const env of envs) {
     imageTag,
     emailDomain,
     emailIdentityArn: emailStack?.identityArn,
-    emailConfigurationSetName: emailStack?.configurationSetName
+    emailConfigurationSetName: emailStack?.configurationSetName,
+    stripePriceIdPro: stripePriceIdProFor(env)
   })
 }

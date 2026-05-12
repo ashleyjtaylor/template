@@ -14,7 +14,11 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OrgsOrgIdRouteImport } from './routes/orgs.$orgId'
+import { Route as OnboardingSuccessRouteImport } from './routes/onboarding.success'
+import { Route as OnboardingSubscribeRouteImport } from './routes/onboarding.subscribe'
 import { Route as OrgsOrgIdSettingsPeopleRouteImport } from './routes/orgs.$orgId.settings.people'
+import { Route as OrgsOrgIdSettingsBillingRouteImport } from './routes/orgs.$orgId.settings.billing'
 
 const TeamSignupRoute = TeamSignupRouteImport.update({
   id: '/team-signup',
@@ -41,11 +45,32 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OrgsOrgIdSettingsPeopleRoute = OrgsOrgIdSettingsPeopleRouteImport.update({
-  id: '/orgs/$orgId/settings/people',
-  path: '/orgs/$orgId/settings/people',
+const OrgsOrgIdRoute = OrgsOrgIdRouteImport.update({
+  id: '/orgs/$orgId',
+  path: '/orgs/$orgId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingSuccessRoute = OnboardingSuccessRouteImport.update({
+  id: '/onboarding/success',
+  path: '/onboarding/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingSubscribeRoute = OnboardingSubscribeRouteImport.update({
+  id: '/onboarding/subscribe',
+  path: '/onboarding/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgsOrgIdSettingsPeopleRoute = OrgsOrgIdSettingsPeopleRouteImport.update({
+  id: '/settings/people',
+  path: '/settings/people',
+  getParentRoute: () => OrgsOrgIdRoute,
+} as any)
+const OrgsOrgIdSettingsBillingRoute =
+  OrgsOrgIdSettingsBillingRouteImport.update({
+    id: '/settings/billing',
+    path: '/settings/billing',
+    getParentRoute: () => OrgsOrgIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,6 +78,10 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/team-signup': typeof TeamSignupRoute
+  '/onboarding/subscribe': typeof OnboardingSubscribeRoute
+  '/onboarding/success': typeof OnboardingSuccessRoute
+  '/orgs/$orgId': typeof OrgsOrgIdRouteWithChildren
+  '/orgs/$orgId/settings/billing': typeof OrgsOrgIdSettingsBillingRoute
   '/orgs/$orgId/settings/people': typeof OrgsOrgIdSettingsPeopleRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +90,10 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/team-signup': typeof TeamSignupRoute
+  '/onboarding/subscribe': typeof OnboardingSubscribeRoute
+  '/onboarding/success': typeof OnboardingSuccessRoute
+  '/orgs/$orgId': typeof OrgsOrgIdRouteWithChildren
+  '/orgs/$orgId/settings/billing': typeof OrgsOrgIdSettingsBillingRoute
   '/orgs/$orgId/settings/people': typeof OrgsOrgIdSettingsPeopleRoute
 }
 export interface FileRoutesById {
@@ -70,6 +103,10 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/team-signup': typeof TeamSignupRoute
+  '/onboarding/subscribe': typeof OnboardingSubscribeRoute
+  '/onboarding/success': typeof OnboardingSuccessRoute
+  '/orgs/$orgId': typeof OrgsOrgIdRouteWithChildren
+  '/orgs/$orgId/settings/billing': typeof OrgsOrgIdSettingsBillingRoute
   '/orgs/$orgId/settings/people': typeof OrgsOrgIdSettingsPeopleRoute
 }
 export interface FileRouteTypes {
@@ -80,6 +117,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/team-signup'
+    | '/onboarding/subscribe'
+    | '/onboarding/success'
+    | '/orgs/$orgId'
+    | '/orgs/$orgId/settings/billing'
     | '/orgs/$orgId/settings/people'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -88,6 +129,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/team-signup'
+    | '/onboarding/subscribe'
+    | '/onboarding/success'
+    | '/orgs/$orgId'
+    | '/orgs/$orgId/settings/billing'
     | '/orgs/$orgId/settings/people'
   id:
     | '__root__'
@@ -96,6 +141,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/team-signup'
+    | '/onboarding/subscribe'
+    | '/onboarding/success'
+    | '/orgs/$orgId'
+    | '/orgs/$orgId/settings/billing'
     | '/orgs/$orgId/settings/people'
   fileRoutesById: FileRoutesById
 }
@@ -105,7 +154,9 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   TeamSignupRoute: typeof TeamSignupRoute
-  OrgsOrgIdSettingsPeopleRoute: typeof OrgsOrgIdSettingsPeopleRoute
+  OnboardingSubscribeRoute: typeof OnboardingSubscribeRoute
+  OnboardingSuccessRoute: typeof OnboardingSuccessRoute
+  OrgsOrgIdRoute: typeof OrgsOrgIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -145,15 +196,57 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/orgs/$orgId': {
+      id: '/orgs/$orgId'
+      path: '/orgs/$orgId'
+      fullPath: '/orgs/$orgId'
+      preLoaderRoute: typeof OrgsOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding/success': {
+      id: '/onboarding/success'
+      path: '/onboarding/success'
+      fullPath: '/onboarding/success'
+      preLoaderRoute: typeof OnboardingSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding/subscribe': {
+      id: '/onboarding/subscribe'
+      path: '/onboarding/subscribe'
+      fullPath: '/onboarding/subscribe'
+      preLoaderRoute: typeof OnboardingSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/orgs/$orgId/settings/people': {
       id: '/orgs/$orgId/settings/people'
-      path: '/orgs/$orgId/settings/people'
+      path: '/settings/people'
       fullPath: '/orgs/$orgId/settings/people'
       preLoaderRoute: typeof OrgsOrgIdSettingsPeopleRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof OrgsOrgIdRoute
+    }
+    '/orgs/$orgId/settings/billing': {
+      id: '/orgs/$orgId/settings/billing'
+      path: '/settings/billing'
+      fullPath: '/orgs/$orgId/settings/billing'
+      preLoaderRoute: typeof OrgsOrgIdSettingsBillingRouteImport
+      parentRoute: typeof OrgsOrgIdRoute
     }
   }
 }
+
+interface OrgsOrgIdRouteChildren {
+  OrgsOrgIdSettingsBillingRoute: typeof OrgsOrgIdSettingsBillingRoute
+  OrgsOrgIdSettingsPeopleRoute: typeof OrgsOrgIdSettingsPeopleRoute
+}
+
+const OrgsOrgIdRouteChildren: OrgsOrgIdRouteChildren = {
+  OrgsOrgIdSettingsBillingRoute: OrgsOrgIdSettingsBillingRoute,
+  OrgsOrgIdSettingsPeopleRoute: OrgsOrgIdSettingsPeopleRoute,
+}
+
+const OrgsOrgIdRouteWithChildren = OrgsOrgIdRoute._addFileChildren(
+  OrgsOrgIdRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -161,7 +254,9 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   TeamSignupRoute: TeamSignupRoute,
-  OrgsOrgIdSettingsPeopleRoute: OrgsOrgIdSettingsPeopleRoute,
+  OnboardingSubscribeRoute: OnboardingSubscribeRoute,
+  OnboardingSuccessRoute: OnboardingSuccessRoute,
+  OrgsOrgIdRoute: OrgsOrgIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

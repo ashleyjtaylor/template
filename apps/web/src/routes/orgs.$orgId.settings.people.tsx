@@ -5,6 +5,7 @@ import { ApiError } from '@/lib/api'
 import { useMyOrgs } from '@/modules/org-management/api'
 import { InvitationsSection } from '@/modules/org-management/components/InvitationsSection'
 import { MembersSection } from '@/modules/org-management/components/MembersSection'
+import { SettingsNav } from '@/modules/org-management/components/SettingsNav'
 import { useSession } from '@/modules/session/api'
 
 export const Route = createFileRoute('/orgs/$orgId/settings/people')({
@@ -63,6 +64,7 @@ function PeoplePage() {
 
   return (
     <PageShell title="People" subtitle={myMembership.organisation.name}>
+      <SettingsNav orgId={orgId} />
       <Tabs defaultValue="members">
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
