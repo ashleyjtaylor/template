@@ -10,6 +10,7 @@ import { healthReady } from '@/middleware/health-ready.js'
 import { requestId } from '@/middleware/request-id.js'
 import { requestLogger } from '@/middleware/request-logger.js'
 import { requireStaff } from '@/middleware/require-staff.js'
+import { orgsAdminRoutes } from '@/modules/admin/orgs/routes.js'
 import { queuesAdminPlugin } from '@/modules/admin/queues.js'
 import { sentEmailsAdminRoutes } from '@/modules/admin/sent-emails/routes.js'
 import { auditLogRoutes } from '@/modules/audit-log/routes.js'
@@ -61,6 +62,7 @@ export function createApp({
   app.use('/api/admin/queues/*', requireStaff)
   app.use('/api/admin/queues', requireStaff)
   app.route('/api/admin/queues', queuesAdminPlugin)
+  app.route('/api/admin/orgs', orgsAdminRoutes)
   app.route('/api/admin/sent-emails', sentEmailsAdminRoutes)
   app.route('/api/audit-log', auditLogRoutes)
   app.route('/api/orgs', orgRoutes)

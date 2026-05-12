@@ -9,13 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as OrgsRouteImport } from './routes/orgs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EmailsRouteImport } from './routes/emails'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EmailsEntityIdRouteImport } from './routes/emails_.$entityId'
 import { Route as AuditEntityIdRouteImport } from './routes/audit_.$entityId'
+import { Route as OrgsEntityIdBillingRouteImport } from './routes/orgs_.$entityId.billing'
 
+const OrgsRoute = OrgsRouteImport.update({
+  id: '/orgs',
+  path: '/orgs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -46,22 +53,31 @@ const AuditEntityIdRoute = AuditEntityIdRouteImport.update({
   path: '/audit/$entityId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrgsEntityIdBillingRoute = OrgsEntityIdBillingRouteImport.update({
+  id: '/orgs_/$entityId/billing',
+  path: '/orgs/$entityId/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/emails': typeof EmailsRoute
   '/login': typeof LoginRoute
+  '/orgs': typeof OrgsRoute
   '/audit/$entityId': typeof AuditEntityIdRoute
   '/emails/$entityId': typeof EmailsEntityIdRoute
+  '/orgs/$entityId/billing': typeof OrgsEntityIdBillingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/emails': typeof EmailsRoute
   '/login': typeof LoginRoute
+  '/orgs': typeof OrgsRoute
   '/audit/$entityId': typeof AuditEntityIdRoute
   '/emails/$entityId': typeof EmailsEntityIdRoute
+  '/orgs/$entityId/billing': typeof OrgsEntityIdBillingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -69,8 +85,10 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/emails': typeof EmailsRoute
   '/login': typeof LoginRoute
+  '/orgs': typeof OrgsRoute
   '/audit_/$entityId': typeof AuditEntityIdRoute
   '/emails_/$entityId': typeof EmailsEntityIdRoute
+  '/orgs_/$entityId/billing': typeof OrgsEntityIdBillingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -79,24 +97,30 @@ export interface FileRouteTypes {
     | '/audit'
     | '/emails'
     | '/login'
+    | '/orgs'
     | '/audit/$entityId'
     | '/emails/$entityId'
+    | '/orgs/$entityId/billing'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/audit'
     | '/emails'
     | '/login'
+    | '/orgs'
     | '/audit/$entityId'
     | '/emails/$entityId'
+    | '/orgs/$entityId/billing'
   id:
     | '__root__'
     | '/'
     | '/audit'
     | '/emails'
     | '/login'
+    | '/orgs'
     | '/audit_/$entityId'
     | '/emails_/$entityId'
+    | '/orgs_/$entityId/billing'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -104,12 +128,21 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   EmailsRoute: typeof EmailsRoute
   LoginRoute: typeof LoginRoute
+  OrgsRoute: typeof OrgsRoute
   AuditEntityIdRoute: typeof AuditEntityIdRoute
   EmailsEntityIdRoute: typeof EmailsEntityIdRoute
+  OrgsEntityIdBillingRoute: typeof OrgsEntityIdBillingRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/orgs': {
+      id: '/orgs'
+      path: '/orgs'
+      fullPath: '/orgs'
+      preLoaderRoute: typeof OrgsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -152,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditEntityIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/orgs_/$entityId/billing': {
+      id: '/orgs_/$entityId/billing'
+      path: '/orgs/$entityId/billing'
+      fullPath: '/orgs/$entityId/billing'
+      preLoaderRoute: typeof OrgsEntityIdBillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -160,8 +200,10 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   EmailsRoute: EmailsRoute,
   LoginRoute: LoginRoute,
+  OrgsRoute: OrgsRoute,
   AuditEntityIdRoute: AuditEntityIdRoute,
   EmailsEntityIdRoute: EmailsEntityIdRoute,
+  OrgsEntityIdBillingRoute: OrgsEntityIdBillingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
