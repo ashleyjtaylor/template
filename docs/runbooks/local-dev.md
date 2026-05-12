@@ -96,6 +96,26 @@ After triggering an email-producing flow (e.g. invite a teammate from the SPA), 
 
 Note: the deployed env equivalents are SES (`SesSender`) when an `EmailStack` has been provisioned for the fork, or `LogOnlySender` otherwise. Both write a `sent_emails` row regardless of whether anything actually left the VPC.
 
+## Stripe (local billing flow)
+
+Stripe is a fork-opt-in surface. Without configuration, `apps/api`'s billing routes return a clean 503 (`BillingNotConfigured`) and `apps/web`'s paywall guard never fires. To exercise the full flow locally, see the playbook at [`billing-smoke.md`](./billing-smoke.md). Short version:
+
+```bash
+brew install stripe/stripe-cli/stripe
+stripe login                                                    # one-time
+stripe listen --forward-to localhost:3000/api/webhooks/stripe   # leave running
+```
+
+Then populate `apps/api/.env` from the test-mode dashboard:
+
+- `STRIPE_API_KEY=sk_test_…` — Developers → API keys.
+- `STRIPE_WEBHOOK_SECRET=whsec_…` — printed by `stripe listen` on startup.
+- `STRIPE_PRICE_ID_PRO=price_…` — Products → Add a recurring "Pro" product → copy the price id.
+- `STRIPE_PORTAL_RETURN_URL=http://localhost:5174` — the web SPA origin.
+- `WEB_BASE_URL=http://localhost:5174` — used to build Checkout success / cancel URLs.
+
+Restart the API after editing `.env`. Subscribe via the SPA's `/onboarding/subscribe` page with test card `4242 4242 4242 4242`, any future date, any CVC. The `stripe listen` window will print the forwarded events; the `subscription` table should land a row within ~1s.
+
 ## Bull Board
 
 Once logged in as staff, click **Queues** in the sidebar (or hit `http://localhost:3000/api/admin/queues/` directly) to see the live BullMQ state — jobs in flight, completed, failed, repeatables. Useful for confirming the worker is alive end-to-end and for retrying failed jobs without SSH. Bull Board serves its own server-side HTML, so the sidebar link opens a new tab.

@@ -259,20 +259,17 @@ Webhook handlers are **idempotent by event id** — duplicate deliveries are no-
 
 ### Subscription shape
 
-- **Per-organisation** subscription. `organizations.stripe_customer_id` and `subscriptions.organization_id` (1:1 active sub).
-- **Two line items per subscription**:
-  - Item 1: Plan (qty=1, includes the owner seat)
-  - Item 2: Seat (qty = `members - 1`, soft cap)
-- Seat sync triggered by `org.seat_count_changed` events written to outbox on accepted membership add/remove. Worker calls `stripe.subscriptions.update` with the new quantity. Stripe prorates automatically.
+- **Per-organisation** subscription. `organisation.stripeCustomerId` (set on first `checkout.session.completed`) and `subscription.organisation_id` (unique, one row per org, UPSERTed by the webhook). Solo signup auto-creates a Personal org so every user has at least one billing surface.
+- **Two line items per subscription** (per-seat sync is a follow-up ticket — not yet shipped):
+  - Item 1: Plan (qty=1, includes the owner seat).
+  - Item 2: Seat (qty = `members - 1`, soft cap). Sync triggered by `org.seat_count_changed` events written to outbox on accepted membership add/remove. Worker calls `stripe.subscriptions.update` with the new quantity. Stripe prorates automatically.
 - `seat_quantity` denormalised on `subscriptions` for fast queries.
 
 ### Plans + entitlements
 
 - **Plans defined in Stripe** (products + prices), with a `planKey` in price metadata linking to code-managed entitlements.
-- **Mirror tables** (`stripe_products`, `stripe_prices`, `subscriptions`, `invoices`) populated by webhook handlers — read-only from app code.
-- **Entitlements** in `packages/entitlements`: pure function `entitlementsForPlan(planKey, overrides) → { seats, features, limits }`.
-- Enforcement: `assertEntitled(org, 'integrations.slack')` + `getLimit(org, 'seats')`.
-- Per-org overrides via `feature_flag_overrides` (staff-controlled), winning over plan defaults.
+- **Mirror tables** populated by webhook handlers — read-only from app code. Currently shipped: `subscription` (one row per org, UPSERTed) and `stripe_event` (idempotency anchor). Future: `invoices` mirror lands when the internal-app surfaces invoice history.
+- **Entitlements** in `packages/billing` (single-package for now — graduates to `packages/entitlements` if a second consumer arrives): `entitlementsForPlan(planKey) → { seats, features }`. Single Pro plan ships in the template; multi-plan + per-org overrides are follow-up tickets.
 
 ### Signup → paywall flow (no trials)
 
