@@ -42,7 +42,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           # Region must match `aws.region` in infra/cdk/lib/config.ts
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -208,7 +208,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -298,7 +298,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -329,7 +329,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -393,7 +393,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
@@ -449,7 +449,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: eu-west-1
