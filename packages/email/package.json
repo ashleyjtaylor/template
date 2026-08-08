@@ -28,7 +28,7 @@
     "@react-email/render": "2.0.8",
     "@template/db": "workspace:*",
     "@template/errors": "workspace:*",
-    "nodemailer": "8.0.7",
+    "nodemailer": "9.0.1",
     "pino": "10.3.1",
     "react": "19.2.6",
     "zod": "4.4.3"
