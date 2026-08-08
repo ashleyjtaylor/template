@@ -30,12 +30,12 @@
     "@template/errors": "workspace:*",
     "nodemailer": "8.0.7",
     "pino": "10.3.1",
-    "react": "19.2.6",
+    "react": "19.2.8",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/nodemailer": "8.0.0",
-    "@types/react": "19.2.14",
+    "@types/react": "19.2.18",
     "typescript": "6.0.3",
     "vitest": "4.1.5"
   }
