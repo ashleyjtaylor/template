@@ -22,7 +22,7 @@
     "@biomejs/biome": "2.4.15",
     "@commitlint/cli": "20.5.3",
     "@commitlint/config-conventional": "20.5.3",
-    "@types/node": "24.12.3",
+    "@types/node": "24.13.3",
     "lefthook": "2.1.6",
     "turbo": "2.9.12",
     "typescript": "6.0.3"

@@ -3,7 +3,7 @@
 # Node and pnpm versions must match the root package.json `engines` and `packageManager`
 # fields and the corresponding inputs in .github/workflows/ci.yml. See apps/api/Dockerfile
 # for the base-image rationale (glibc over musl, openssl for Prisma).
-FROM node:24.15.0-bookworm-slim AS base
+FROM node:24.19.0-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@11.0.8
 WORKDIR /repo
@@ -37,7 +37,7 @@ RUN pnpm --filter @template/worker build
 # pnpm's interactive purge prompt — see apps/api/Dockerfile for details.
 RUN CI=true pnpm install --frozen-lockfile --filter @template/worker... --prod --ignore-scripts
 
-FROM node:24.15.0-bookworm-slim AS runner
+FROM node:24.19.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ARG GIT_SHA=""

@@ -6,7 +6,7 @@
 # (most npm prebuilds target glibc) and to avoid musl's DNS/threading edge cases.
 # openssl is required by Prisma's query engine to detect the right libssl variant —
 # without it Prisma logs a warning and falls back to openssl-1.1.x.
-FROM node:24.15.0-bookworm-slim AS base
+FROM node:24.19.0-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@11.0.8
 WORKDIR /repo
@@ -48,7 +48,7 @@ RUN pnpm --filter @template/api build
 # stage); without it pnpm aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
 RUN CI=true pnpm install --frozen-lockfile --filter @template/api... --prod --ignore-scripts
 
-FROM node:24.15.0-bookworm-slim AS runner
+FROM node:24.19.0-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ARG GIT_SHA=""

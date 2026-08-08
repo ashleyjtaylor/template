@@ -74,7 +74,7 @@ jobs:
 
       - uses: actions/setup-node@v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -104,7 +104,7 @@ jobs:
 
       - uses: actions/setup-node@v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -126,7 +126,7 @@ jobs:
 
       - uses: actions/setup-node@v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -186,7 +186,7 @@ jobs:
 
       - uses: actions/setup-node@v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -209,7 +209,7 @@ jobs:
 
       - uses: actions/setup-node@v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.19.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
