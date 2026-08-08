@@ -37,10 +37,10 @@ importers:
         version: 7.0.0(@bull-board/ui@7.0.0)
       '@bull-board/hono':
         specifier: 7.0.0
-        version: 7.0.0(hono@4.12.18)
+        version: 7.0.0(hono@4.12.34)
       '@hono/node-server':
         specifier: 2.0.1
-        version: 2.0.1(hono@4.12.18)
+        version: 2.0.1(hono@4.12.34)
       '@template/billing':
         specifier: workspace:*
         version: link:../../packages/billing
@@ -57,8 +57,8 @@ importers:
         specifier: 1.6.9
         version: 1.6.9(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3))(mysql2@3.15.3)(pg@8.20.0)(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.5(@types/node@24.12.3)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.11(@types/node@24.12.3)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)))
       hono:
-        specifier: 4.12.18
-        version: 4.12.18
+        specifier: 4.12.34
+        version: 4.12.34
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -1927,6 +1927,7 @@ packages:
   '@smithy/core@3.24.0':
     resolution: {integrity: sha512-rZ5YfycIXX6puoGjthnDiMpUgtKNOq3c7CndQYkCNYQTv26AiCrZQOJPy7ANSfZ6Okk3UvCRnmO1OYWlLnYZgg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to incompatibility with Node.js 18 in some environments https://github.com/smithy-lang/smithy-typescript/issues/2022
 
   '@smithy/credential-provider-imds@4.3.0':
     resolution: {integrity: sha512-5gi+28FH+RurB2+tcRH1CK7KiLJ0dVnabjWLY3DgeFLiU45dbyrsq7NOYvMUcHgu9LVZH5F7G+Qk1GdXF0y6jg==}
@@ -2638,6 +2639,7 @@ packages:
   cron-parser@4.9.0:
     resolution: {integrity: sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q==}
     engines: {node: '>=12.0.0'}
+    deprecated: v4 is no longer maintained, upgrade to v5
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2885,6 +2887,7 @@ packages:
   git-raw-commits@5.0.1:
     resolution: {integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ==}
     engines: {node: '>=18'}
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   glob-parent@5.1.2:
@@ -2913,6 +2916,10 @@ packages:
 
   hono@4.12.18:
     resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+    engines: {node: '>=16.9.0'}
+
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -4633,12 +4640,12 @@ snapshots:
       '@bull-board/ui': 7.0.0
       redis-info: 3.1.0
 
-  '@bull-board/hono@7.0.0(hono@4.12.18)':
+  '@bull-board/hono@7.0.0(hono@4.12.34)':
     dependencies:
       '@bull-board/api': 7.0.0(@bull-board/ui@7.0.0)
       '@bull-board/ui': 7.0.0
       ejs: 5.0.2
-      hono: 4.12.18
+      hono: 4.12.34
 
   '@bull-board/ui@7.0.0':
     dependencies:
@@ -4915,9 +4922,9 @@ snapshots:
     dependencies:
       hono: 4.12.18
 
-  '@hono/node-server@2.0.1(hono@4.12.18)':
+  '@hono/node-server@2.0.1(hono@4.12.34)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.34
 
   '@ioredis/commands@1.5.1': {}
 
@@ -6543,6 +6550,8 @@ snapshots:
   help-me@5.0.0: {}
 
   hono@4.12.18: {}
+
+  hono@4.12.34: {}
 
   html-encoding-sniffer@6.0.0(@noble/hashes@2.2.0):
     dependencies:
