@@ -56,7 +56,7 @@ jobs:
         # a later command echoes the literal value into output.
         run: echo "::add-mask::$PASSWORD"
 
-      - uses: aws-actions/configure-aws-credentials@v6.1.1
+      - uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           # Region must match `aws.region` in infra/cdk/lib/config.ts
