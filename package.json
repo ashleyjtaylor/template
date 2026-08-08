@@ -23,7 +23,7 @@
     "@commitlint/cli": "20.5.3",
     "@commitlint/config-conventional": "20.5.3",
     "@types/node": "24.12.3",
-    "lefthook": "2.1.6",
+    "lefthook": "2.1.10",
     "turbo": "2.9.12",
     "typescript": "6.0.3"
   }
