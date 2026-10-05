@@ -79,7 +79,7 @@ jobs:
           aws-region: eu-west-1
 
       - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2.1.5
+        uses: aws-actions/amazon-ecr-login@v2.1.7
 
       - id: tag
         # Repo name must match `repositoryName` in infra/cdk/lib/data-stack.ts
@@ -120,7 +120,7 @@ jobs:
           aws-region: eu-west-1
 
       - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2.1.5
+        uses: aws-actions/amazon-ecr-login@v2.1.7
 
       - id: tag
         # Repo name must match `repositoryName` for workerRepo in
