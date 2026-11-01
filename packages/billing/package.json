@@ -26,7 +26,7 @@
     "@template/db": "workspace:*",
     "@template/errors": "workspace:*",
     "stripe": "22.1.1",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "typescript": "6.0.3",
